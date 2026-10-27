@@ -49,8 +49,9 @@ void Resource::readCoordArray(InputStream* IS, short* dest, int off, int size) {
 }
 
 void Resource::readShortArray(InputStream* IS, short* dest, int off, int size) {
+    const int maxElems = Resource::IO_SIZE / (int)sizeof(short);
     while (size > 0) {
-        int n2 = (Resource::IO_SIZE > size) ? size : Resource::IO_SIZE;
+        int n2 = (maxElems > size) ? size : maxElems;
         size -= n2;
         this->read(IS, n2 * sizeof(short));
         while (--n2 >= 0) {
@@ -60,8 +61,9 @@ void Resource::readShortArray(InputStream* IS, short* dest, int off, int size) {
 }
 
 void Resource::readUShortArray(InputStream* IS, int* dest, int off, int size) {
+    const int maxElems = Resource::IO_SIZE / (int)sizeof(uint16_t);
     while (size > 0) {
-        int n2 = (Resource::IO_SIZE > size) ? size : Resource::IO_SIZE;
+        int n2 = (maxElems > size) ? size : maxElems;
         size -= n2;
         this->read(IS, n2 * sizeof(uint16_t));
         while (--n2 >= 0) {
@@ -71,8 +73,9 @@ void Resource::readUShortArray(InputStream* IS, int* dest, int off, int size) {
 }
 
 void Resource::readIntArray(InputStream* IS, int* dest, int off, int size) {
+    const int maxElems = Resource::IO_SIZE / (int)sizeof(int);
     while (size > 0) {
-        int n2 = (Resource::IO_SIZE > size) ? size : Resource::IO_SIZE;
+        int n2 = (maxElems > size) ? size : maxElems;
         size -= n2;
         this->read(IS, n2 * sizeof(int));
         while (--n2 >= 0) {
@@ -159,10 +162,7 @@ int* Resource::readFileIndex(InputStream *IS) {
     this->read(IS, sizeof(int));
     int shiftInt = this->shiftInt();
     int* array = new int[shiftInt];
-    this->read(IS, shiftInt * sizeof(int));
-    for (int i = 0; i < shiftInt; ++i) {
-        array[i] = this->shiftInt();
-    }
+    this->readIntArray(IS, array, 0, shiftInt);
     return array;
 }
 
@@ -202,7 +202,6 @@ int* Resource::loadFileIndex(char* fileName) {
     this->shiftByte();
     array[(n4 * 3) - 1] = this->shiftInt() - array[(n4 * 3) - 2];
     IS.close();
-    IS.~InputStream();
     return array;
 }
 
@@ -219,7 +218,6 @@ void Resource::initTableLoading() {
         this->tableOffsets[i] = this->shiftInt();
     }
     IS.close();
-    IS.~InputStream();
 }
 
 void Resource::beginTableLoading() {
@@ -310,7 +308,7 @@ int Resource::loadShortTable(short* array, int index) {
     return n3; // [GEC]: new
 }
 
-void Resource::loadIntTable(int* array, int index) {
+void Resource::loadIntTable(int32_t* array, int index) {
     this->seekTable(index);
     this->read(&this->prevIS, sizeof(int));
     int size = shiftInt() * sizeof(int);

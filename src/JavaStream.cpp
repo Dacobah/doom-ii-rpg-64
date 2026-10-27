@@ -13,13 +13,32 @@ namespace {
         T value;
         std::memcpy(&value, data, sizeof(T));
         cursor += sizeof(T);
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+        if constexpr (sizeof(T) == 2) {
+            value = (T)__builtin_bswap16((uint16_t)value);
+        } else if constexpr (sizeof(T) == 4) {
+            value = (T)__builtin_bswap32((uint32_t)value);
+        } else if constexpr (sizeof(T) == 8) {
+            value = (T)__builtin_bswap64((uint64_t)value);
+        }
+#endif
         return value;
     }
 
     template<typename T>
     void writeData(T data, uint8_t* stream, uint32_t& cursor)
     {
-        std::memcpy(stream, &data, sizeof(T));
+        T value = data;
+#if defined(__BYTE_ORDER__) && (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+        if constexpr (sizeof(T) == 2) {
+            value = (T)__builtin_bswap16((uint16_t)value);
+        } else if constexpr (sizeof(T) == 4) {
+            value = (T)__builtin_bswap32((uint32_t)value);
+        } else if constexpr (sizeof(T) == 8) {
+            value = (T)__builtin_bswap64((uint64_t)value);
+        }
+#endif
+        std::memcpy(stream, &value, sizeof(T));
         cursor += sizeof(T);
     }
 }
@@ -45,6 +64,7 @@ InputStream::~InputStream() {
 	}
 
 	if (this->data) {
+		// printf("~InputStream: free(%p)\n", this->data);
 		std::free(this->data);
 		this->data = nullptr;
 	}
@@ -70,12 +90,11 @@ bool InputStream::loadResource(const char* fileName)
 
 bool InputStream::loadFile(const char* fileName, int loadType) {
 	char namePath[2048];
+	this->close();
 	this->cursor = 0;
 
 	if (loadType == LT_RESOURCE) {
-		strncpy(namePath, "Payload/Doom2rpg.app/Packages/", sizeof(namePath));
-		strncat(namePath, fileName, sizeof(namePath));
-		//printf("namePath %s\n", namePath);
+		snprintf(namePath, sizeof(namePath), "Payload/Doom2rpg.app/Packages/%s", fileName);
 
 		this->data = CAppContainer::getInstance()->zipFile->readZipFileEntry(namePath, &this->fileSize);
 		if (this->data) {
@@ -83,9 +102,7 @@ bool InputStream::loadFile(const char* fileName, int loadType) {
 		}
 	}
 	else if (loadType == LT_SOUND_RESOURCE) { // [GEC]
-		strncpy(namePath, "Payload/Doom2rpg.app/Packages/sounds2/", sizeof(namePath));
-		strncat(namePath, fileName, sizeof(namePath));
-		//printf("namePath %s\n", namePath);
+		snprintf(namePath, sizeof(namePath), "Payload/Doom2rpg.app/Packages/sounds2/%s", fileName);
 
 		this->data = CAppContainer::getInstance()->zipFile->readZipFileEntry(namePath, &this->fileSize);
 		if (this->data) {
@@ -130,6 +147,10 @@ void InputStream::close() {
 	if (this->file) {
 		std::fclose(this->file);
 		this->file = nullptr;
+	}
+	if (this->data) {
+		std::free(this->data);
+		this->data = nullptr;
 	}
 }
 
@@ -212,6 +233,16 @@ OutputStream::~OutputStream() {
 #include <sys/stat.h>
 
 int OutputStream::openFile(const char* fileName, int openMode) {
+#ifdef N64
+	(void)fileName; (void)openMode;
+	this->buffer = (uint8_t*)std::malloc(512);
+	std::memset(this->buffer, 0, 512);
+	this->noWrite = true;
+	this->isOpen = true;
+	this->written = 0;
+	this->flushCount = 0;
+	return 1;
+#endif
 	char namePath[2060];
 
 	struct stat sb;

@@ -168,9 +168,8 @@ void Localization::finishTextLoading() {
 	}
 	this->textIndex = nullptr;
 
-	this->textChunkStream->close();
 	if (this->textChunkStream != nullptr) {
-		this->textChunkStream->~InputStream();
+		this->textChunkStream->close();
 		delete this->textChunkStream;
 	}
 	this->textChunkStream = nullptr;

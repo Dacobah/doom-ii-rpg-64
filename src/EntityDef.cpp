@@ -43,7 +43,7 @@ bool EntityDefManager::startup() {
 		this->list[i].description = (int16_t)app->resource->shiftUByte();
 	}
 
-	IS.~InputStream();
+	IS.close();
 
 	/*for (int i = 0; i < this->numDefs; i++) {
 		printf("list[%d]------------------------\n", i);

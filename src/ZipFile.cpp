@@ -1,10 +1,85 @@
 #include <stdexcept>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include <SDL.h>
 #include "ZipFile.h"
 #include "SDLGL.h"
+
+#ifdef N64
+#include <libdragon.h>
+
+ZipFile::ZipFile() {
+	this->file = nullptr;
+	this->entry_count = 0;
+	this->entry = nullptr;
+	this->page_count = 0;
+	this->page = nullptr;
+}
+
+ZipFile::~ZipFile() {
+	this->closeZipFile();
+}
+
+void ZipFile::openZipFile(const char* name) {
+	(void)name;
+	// DragonFS filesystem is initialized globally at boot
+}
+
+void ZipFile::closeZipFile() {
+}
+
+void ZipFile::findAndReadZipDir(int startoffset) {
+	(void)startoffset;
+}
+
+uint8_t* ZipFile::readZipFileEntry(const char* name, int* sizep) {
+	const char* rel = strstr(name, "Packages/");
+	const char* dfsPath = rel ? rel : name;
+	while (*dfsPath == '/') dfsPath++;
+
+	int handle = dfs_open(dfsPath);
+	if (handle < 0) {
+		char altPath[256];
+		snprintf(altPath, sizeof(altPath), "/%s", dfsPath);
+		handle = dfs_open(altPath);
+	}
+
+	if (handle < 0) {
+		printf("ZipFile (DragonFS): Failed to open %s (err: %d, requested: %s)\n", dfsPath, handle, name);
+		if (sizep) *sizep = 0;
+		return nullptr;
+	}
+
+	int size = dfs_size(handle);
+	if (size <= 0) {
+		printf("ZipFile (DragonFS): Invalid size %d for %s\n", size, dfsPath);
+		dfs_close(handle);
+		if (sizep) *sizep = 0;
+		return nullptr;
+	}
+
+	uint8_t* buf = (uint8_t*)std::malloc(size);
+	if (!buf) {
+		printf("ZipFile: Failed to allocate %d bytes for %s\n", size, dfsPath);
+		dfs_close(handle);
+		if (sizep) *sizep = 0;
+		return nullptr;
+	}
+
+	int readBytes = dfs_read(buf, 1, size, handle);
+	dfs_close(handle);
+
+	if (readBytes != size) {
+		printf("ZipFile: Short read (%d/%d) for %s\n", readBytes, size, dfsPath);
+	}
+
+	if (sizep) *sizep = size;
+	return buf;
+}
+
+#else // !N64 (Original PC implementation)
 
 #define MIN(a,b) (((a)<(b))?(a):(b))
 #define MAX(a,b) (((a)>(b))?(a):(b))
@@ -24,30 +99,25 @@ void Error(const char* fmt, ...)
 	printf("%s", errMsg);
 
 	const SDL_MessageBoxButtonData buttons[] = {
-		{ /* .flags, .buttonid, .text */        0, 0, "Ok" },
+		{ 0, 0, "Ok" },
 	};
 	const SDL_MessageBoxColorScheme colorScheme = {
-		{ /* .colors (.r, .g, .b) */
-			/* [SDL_MESSAGEBOX_COLOR_BACKGROUND] */
+		{
 			{ 255,   0,   0 },
-			/* [SDL_MESSAGEBOX_COLOR_TEXT] */
 			{   0, 255,   0 },
-			/* [SDL_MESSAGEBOX_COLOR_BUTTON_BORDER] */
 			{ 255, 255,   0 },
-			/* [SDL_MESSAGEBOX_COLOR_BUTTON_BACKGROUND] */
 			{   0,   0, 255 },
-			/* [SDL_MESSAGEBOX_COLOR_BUTTON_SELECTED] */
 			{ 255,   0, 255 }
 		}
 	};
 	const SDL_MessageBoxData messageboxdata = {
-		SDL_MESSAGEBOX_ERROR, /* .flags */
-		NULL, /* .window */
-		"Doom II RPG Error", /* .title */
-		errMsg, /* .message */
-		SDL_arraysize(buttons), /* .numbuttons */
-		buttons, /* .buttons */
-		&colorScheme /* .colorScheme */
+		SDL_MESSAGEBOX_ERROR,
+		NULL,
+		"Doom II RPG Error",
+		errMsg,
+		SDL_arraysize(buttons),
+		buttons,
+		&colorScheme
 	};
 
 	SDL_ShowMessageBox(&messageboxdata, NULL);
@@ -59,95 +129,114 @@ static void* zip_alloc(void* ctx, unsigned int items, unsigned int size)
 	return std::malloc(items * size);
 }
 
-static void zip_free(void* ctx, void* ptr)
+static void zip_free(void* ctx, void* address)
 {
-	std::free(ptr);
+	std::free(address);
 }
 
-static int16_t _ReadShort(FILE* fp)
+static int _ReadByte(FILE* f)
 {
-	int16_t sData = 0;
-
-	if (fp) {
-		fread(&sData, sizeof(int16_t), 1, fp);
-	}
-
-	return SDL_SwapLE16(sData);
+	return fgetc(f);
 }
 
-static int32_t _ReadInt(FILE* fp)
+static int _ReadShort(FILE* f)
 {
-	int32_t iData = 0;
+	int v;
 
-	if (fp) {
-		fread(&iData, sizeof(int32_t), 1, fp);
-	}
+	v = fgetc(f);
+	v |= fgetc(f) << 8;
 
-	return SDL_SwapLE32(iData);
+	return v;
+}
+
+static int _ReadInt(FILE* f)
+{
+	int v;
+
+	v = fgetc(f);
+	v |= fgetc(f) << 8;
+	v |= fgetc(f) << 16;
+	v |= fgetc(f) << 24;
+
+	return v;
 }
 
 ZipFile::ZipFile() {
-	std::memset(this, 0, sizeof(ZipFile));
+	this->file = nullptr;
+	this->entry_count = 0;
+	this->entry = nullptr;
+	this->page_count = 0;
+	this->page = nullptr;
 }
 
 ZipFile::~ZipFile() {
+	this->closeZipFile();
 }
 
 void ZipFile::findAndReadZipDir(int startoffset) {
-	int sig, offset, count;
-	int namesize, metasize, commentsize;
+	int files, count, offset, size;
 	int i;
 
 	fseek(this->file, startoffset, SEEK_SET);
 
-	sig = _ReadInt(this->file);
-	if (sig != ZIP_END_OF_CENTRAL_DIRECTORY_SIG) {
-		Error("wrong zip end of central directory signature (0x%x)", sig);
+	if (_ReadInt(this->file) != ZIP_END_OF_CENTRAL_DIRECTORY_SIG) {
+		Error("cannot find end of central directory");
 	}
 
-	_ReadShort(this->file); // this disk
-	_ReadShort(this->file); // start disk
-	_ReadShort(this->file); // entries in this disk
-	count = _ReadShort(this->file); // entries in central directory disk
-	_ReadInt(this->file); // size of central directory
-	offset = _ReadInt(this->file); // offset to central directory
+	_ReadShort(this->file);
+	_ReadShort(this->file);
+	files = _ReadShort(this->file);
+	count = _ReadShort(this->file);
+	size = _ReadInt(this->file);
+	offset = _ReadInt(this->file);
+	_ReadShort(this->file);
 
-	this->entry = (zip_entry_t*)calloc(count, sizeof(zip_entry_t));
+	if (files != count) {
+		Error("multiple disk zipfiles are not supported");
+	}
+
 	this->entry_count = count;
+	this->entry = (zip_entry_t*)std::malloc(count * sizeof(zip_entry_t));
 
 	fseek(this->file, offset, SEEK_SET);
 
 	for (i = 0; i < count; i++)
 	{
-		zip_entry_t* entry = this->entry + i;
+		char name[256];
+		int namelength, extralength, commentsize;
 
-		sig = _ReadInt(this->file);
-		if (sig != ZIP_CENTRAL_DIRECTORY_SIG) {
-			Error("wrong zip central directory signature (0x%x)", sig);
+		if (_ReadInt(this->file) != ZIP_CENTRAL_DIRECTORY_SIG) {
+			Error("wrong zip central directory signature");
 		}
 
 		_ReadShort(this->file); // version made by
-		_ReadShort(this->file); // version to extract
-		_ReadShort(this->file); // general
-		_ReadShort(this->file); // method
+		_ReadShort(this->file); // version needed to extract
+		_ReadShort(this->file); // general purpose bit flag
+		_ReadShort(this->file); // compression method
 		_ReadShort(this->file); // last mod file time
 		_ReadShort(this->file); // last mod file date
 		_ReadInt(this->file); // crc-32
-		entry->csize = _ReadInt(this->file); // csize
-		entry->usize = _ReadInt(this->file); // usize
-		namesize = _ReadShort(this->file); // namesize
-		metasize = _ReadShort(this->file); // metasize
-		commentsize = _ReadShort(this->file); // commentsize
+		this->entry[i].csize = _ReadInt(this->file);
+		this->entry[i].usize = _ReadInt(this->file);
+		namelength = _ReadShort(this->file);
+		extralength = _ReadShort(this->file);
+		commentsize = _ReadShort(this->file);
 		_ReadShort(this->file); // disk number start
-		_ReadShort(this->file); // int file atts
-		_ReadInt(this->file); // ext file atts
-		entry->offset = _ReadInt(this->file); // offset
+		_ReadShort(this->file); // internal file attributes
+		_ReadInt(this->file); // external file attributes
+		this->entry[i].offset = _ReadInt(this->file);
 
-		entry->name = (char*)malloc(namesize + 1);
-		fread(entry->name, sizeof(char), namesize, this->file);
-		entry->name[namesize] = 0;
+		if (namelength >= sizeof(name)) {
+			Error("zipfile entry name is too long (%d)", namelength);
+		}
 
-		fseek(this->file, metasize, SEEK_CUR);
+		fread(name, sizeof(uint8_t), namelength, this->file);
+		name[namelength] = 0;
+
+		this->entry[i].name = (char*)std::malloc(namelength + 1);
+		std::memcpy(this->entry[i].name, name, namelength + 1);
+
+		fseek(this->file, extralength, SEEK_CUR);
 		fseek(this->file, commentsize, SEEK_CUR);
 	}
 }
@@ -228,70 +317,72 @@ uint8_t* ZipFile::readZipFileEntry(const char* name, int* sizep) {
 		Error("wrong zip local file signature (0x%x)", sig);
 	}
 
-	_ReadShort(this->file); // version
-	general = _ReadShort(this->file); // general
+	_ReadShort(this->file);
+	general = _ReadShort(this->file);
 	if (general & ZIP_ENCRYPTED_FLAG) {
 		Error("zipfile content is encrypted");
 	}
 
-	method = _ReadShort(this->file); // method
-	_ReadShort(this->file); // file time
-	_ReadShort(this->file); // file date
-	_ReadInt(this->file); // crc-32
-	_ReadInt(this->file); // csize
-	_ReadInt(this->file); // usize
-	namelength = _ReadShort(this->file); // namelength
-	extralength = _ReadShort(this->file); // extralength
+	method = _ReadShort(this->file);
+	_ReadShort(this->file);
+	_ReadShort(this->file);
+	_ReadInt(this->file);
+	_ReadInt(this->file);
+	_ReadInt(this->file);
+	namelength = _ReadShort(this->file);
+	extralength = _ReadShort(this->file);
 
 	fseek(this->file, namelength + extralength, SEEK_CUR);
 
-	cdata = (uint8_t*) malloc(entry->csize);
+	cdata = (uint8_t*)std::malloc(entry->csize);
 	fread(cdata, sizeof(uint8_t), entry->csize, this->file);
 
 	if (method == 0)
 	{
-		*sizep = entry->usize;
+		*sizep = entry->csize;
 		return cdata;
 	}
 	else if (method == 8)
 	{
-		uint8_t* udata = (uint8_t*) malloc(entry->usize);
-		z_stream stream;
+		uint8_t* udata = (uint8_t*)std::malloc(entry->usize);
 
+		z_stream stream;
 		std::memset(&stream, 0, sizeof stream);
-		stream.zalloc = zip_alloc;
-		stream.zfree = zip_free;
-		stream.opaque = Z_NULL;
+
 		stream.next_in = cdata;
 		stream.avail_in = entry->csize;
 		stream.next_out = udata;
 		stream.avail_out = entry->usize;
+		stream.zalloc = zip_alloc;
+		stream.zfree = zip_free;
+		stream.opaque = Z_NULL;
 
 		code = inflateInit2(&stream, -15);
 		if (code != Z_OK) {
-			Error("zlib inflateInit2 error: %s", stream.msg);
+			Error("inflateInit2 returned %d", code);
 		}
 
 		code = inflate(&stream, Z_FINISH);
 		if (code != Z_STREAM_END) {
 			inflateEnd(&stream);
-			Error("zlib inflate error: %s", stream.msg);
+			Error("inflate returned %d", code);
 		}
 
 		code = inflateEnd(&stream);
 		if (code != Z_OK) {
-			inflateEnd(&stream);
-			Error("zlib inflateEnd error: %s", stream.msg);
+			Error("inflateEnd returned %d", code);
 		}
 
 		std::free(cdata);
-
 		*sizep = entry->usize;
 		return udata;
 	}
-	else {
-		Error("unknown zip method: %d", method);
+	else
+	{
+		Error("unknown compression method %d", method);
 	}
 
 	return nullptr;
 }
+
+#endif

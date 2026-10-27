@@ -1968,9 +1968,12 @@ void Game::saveConfig() {
 		OS.close();
 	}
 	else {
+#ifdef N64
+		debugf("[Game::saveConfig] openFile failed (N64 no-write mode)\n");
+#else
 		app->Error("I/O Error in saveConfig"); // ERR_SAVECONFIG
+#endif
 	}
-	OS.~OutputStream();
 }
 
 void Game::loadConfig() {
@@ -2083,14 +2086,17 @@ void Game::saveState(int lastMapID, int loadMapID, int viewX, int viewY, int vie
 
 		if (OS.openFile(name, 1)) {
 			if (!this->savePlayerState(&OS, loadMapID, viewX, viewY, viewAngle, viewPitch, prevX, prevY, saveX, saveY, saveZ, saveAngle, savePitch)) {
-				OS.~OutputStream();
 				OS.close();
 				return;
 			}
 			OS.close();
 		}
 		else {
+#ifdef N64
+			debugf("[Game::saveState] failed to open player file\n");
+#else
 			app->Error("saveState: failed to open player file");
+#endif
 		}
 	}
 
@@ -2107,13 +2113,15 @@ void Game::saveState(int lastMapID, int loadMapID, int viewX, int viewY, int vie
 			OS.close();
 		}
 		else {
+#ifdef N64
+			debugf("[Game::saveState] failed to open world file\n");
+#else
 			app->Error("saveState: failed to open world file");
+#endif
 		}
 	}
 
 	app->canvas->loadRuntimeData();
-
-	OS.~OutputStream();
 }
 
 void Game::saveLevelSnapshot() {
@@ -2215,7 +2223,11 @@ bool Game::loadState(int activeLoadType) {
 		}
 	}
 	else {
+#ifdef N64
+		debugf("loadState: failed to open player file\n");
+#else
 		app->Error("loadState: failed to open player file");
+#endif
 	}
 
 	IS.~InputStream();
@@ -2366,9 +2378,12 @@ void Game::saveEmptyConfig() {
 		OS.close();
 	}
 	else {
+#ifdef N64
+		debugf("[Game::saveConfig] openFile failed\n");
+#else
 		app->Error("I/O Error in saveConfig");
+#endif
 	}
-	OS.~OutputStream();
 }
 
 bool Game::canSnapMonsters() {

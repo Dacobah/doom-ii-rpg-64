@@ -16,6 +16,7 @@ class Applet;
 
 class InputStream
 {
+    friend class Applet;
 private:
     
     int field_0x0;

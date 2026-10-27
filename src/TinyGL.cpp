@@ -67,7 +67,7 @@ void TinyGL::clearColorBuffer(int color) {
 
 void TinyGL::buildViewMatrix(int x, int y, int z, int yaw, int pitch, int roll, int* matrix) {
 	Applet* app = CAppContainer::getInstance()->app;
-	int *sinTable = app->render->sinTable;
+	int32_t *sinTable = app->render->sinTable;
 
 	int iVar7 = sinTable[yaw + 512 & 0x3ff] >> 2;
 	int iVar6 = sinTable[yaw + 256 & 0x3ff] >> 2;
@@ -99,7 +99,7 @@ void TinyGL::buildViewMatrix(int x, int y, int z, int yaw, int pitch, int roll, 
 
 void TinyGL::buildProjectionMatrix(int fov, int aspect, int* matrix) {
 	Applet* app = CAppContainer::getInstance()->app;
-	int* sinTable = app->render->sinTable;
+	int32_t* sinTable = app->render->sinTable;
 
 	int n3 = aspect >> 1;
 	int n4 = (fov << 14) / aspect;

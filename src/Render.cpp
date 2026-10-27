@@ -526,7 +526,6 @@ void Render::FinalizeMedia() {
 	IS.close();
 	this->_gles->CreateAllActiveTextures();
 	app->canvas->updateLoadingBar(false);
-	IS.~InputStream();
 }
 
 bool Render::beginLoadMap(int mapNameID) {
@@ -4288,20 +4287,38 @@ void DrawBitmap(short* buffer, int buffW, int buffH, int x, int y, int w, int h)
 	st[4] = st[0];
 	st[5] = (float)h / (float)buffH;
 	st[7] = st[5];
-	if (textureName == -1) {
-		glGenTextures(1, &textureName);
-	}
 	glDisable(GL_ALPHA_TEST);
 	glDisable(GL_BLEND);
 	glEnable(GL_TEXTURE_2D);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, 0);
+	if (textureName == (GLuint)-1) {
+		glGenTextures(1, &textureName);
+		glBindTexture(GL_TEXTURE_2D, textureName);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+		glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+	} else {
+		glBindTexture(GL_TEXTURE_2D, textureName);
+	}
 	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+#ifdef N64
+	static uint16_t* rgbaBuf = nullptr;
+	static int rgbaCap = 0;
+	int count = buffW * buffH;
+	if (count > rgbaCap) {
+		std::free(rgbaBuf);
+		rgbaBuf = (uint16_t*)std::malloc(count * sizeof(uint16_t));
+		rgbaCap = count;
+	}
+	for (int i = 0; i < count; i++) {
+		uint16_t pix = (uint16_t)buffer[i];
+		rgbaBuf[i] = (uint16_t)((pix & 0xffc0) | ((pix & 0x1f) << 1) | 1);
+	}
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, buffW, buffH, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, rgbaBuf);
+#else
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, buffW, buffH, 0, GL_RGB, GL_UNSIGNED_SHORT_5_6_5, buffer);
+#endif
 	glVertexPointer(3, GL_FLOAT, 0, vp);
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glTexCoordPointer(2, GL_FLOAT, 0, st);
@@ -4313,6 +4330,9 @@ void DrawBitmap(short* buffer, int buffW, int buffH, int x, int y, int w, int h)
 void Render::Render3dScene(void) {
 	short* backBuffer = CAppContainer::getInstance()->GetBackBuffer();
 
+#ifdef N64
+	glViewport(0, 13, 320, 213);
+#else
 	int cx, cy;
 	int w = CAppContainer::getInstance()->sdlGL->vidWidth;
 	int h = CAppContainer::getInstance()->sdlGL->vidHeight;
@@ -4321,6 +4341,7 @@ void Render::Render3dScene(void) {
 		w = cx; h = cy;
 	}
 	glViewport(0, 0, (GLsizei)w, (GLsizei)h);
+#endif
 	glMatrixMode(GL_PROJECTION);
 	glLoadIdentity();
 	glOrtho(0.0, Applet::IOS_WIDTH, Applet::IOS_HEIGHT, 0.0, -1.0, 1.0);

@@ -871,12 +871,8 @@ void Canvas::run() {
 				this->combatState();
 			}
 			else if (this->state == Canvas::ST_INTRO_MOVIE) {
-				if ((app->game->hasSeenIntro && this->numEvents != 0) || this->scrollingTextDone) {
-					this->dialogBuffer->dispose();
-					this->dialogBuffer = nullptr;
-					app->game->hasSeenIntro = true;
-					app->game->saveConfig();
-					this->backToMain(false);
+				if (this->scrollingTextDone || app->game->skipMovie || (app->game->hasSeenIntro && this->numEvents != 0)) {
+					this->exitIntroMovie(false);
 				}
 			}
 			else if (this->state == Canvas::ST_EPILOGUE) {
@@ -1101,6 +1097,11 @@ void Canvas::setState(int state) {
 	}
 	else if (this->state == Canvas::ST_INTER_CAMERA) {
 	}
+#ifdef N64
+	else if (this->state == Canvas::ST_MINI_GAME && state != Canvas::ST_MINI_GAME && state != Canvas::ST_MENU) {
+		this->freeMiniGameImages();
+	}
+#endif
 
 
 	this->oldState = this->state;
@@ -1276,6 +1277,11 @@ void Canvas::setState(int state) {
 		this->clearSoftKeys();
 		app->tinyGL->setViewport(this->cinRect[0], this->cinRect[1], this->cinRect[2], this->cinRect[3]);
 	}
+#ifdef N64
+	else if (state == Canvas::ST_MINI_GAME) {
+		this->loadMiniGameImages();
+	}
+#endif
 }
 
 void Canvas::setAnimFrames(int animFrames) {
@@ -1897,6 +1903,9 @@ void Canvas::disposeEpilogue() {
 
 void Canvas::loadMiniGameImages() {
 	Applet* app = CAppContainer::getInstance()->app;
+	if (app->hackingGame->imgEnergyCore != nullptr) {
+		return;
+	}
 
 	app->beginImageLoading();
 	app->hackingGame->imgEnergyCore = app->loadImage("hackerBG.bmp", true);
@@ -1925,6 +1934,39 @@ void Canvas::loadMiniGameImages() {
 	// [GEC] Fix the image
 	fixImage(app->hackingGame->imgGameColors);
 	fixImage(app->vendingMachine->imgVending_arrow_down);
+}
+
+void Canvas::freeMiniGameImages() {
+	Applet* app = CAppContainer::getInstance()->app;
+	auto disposeImg = [](Image*& img) {
+		if (img != nullptr) {
+			img->~Image();
+			img = nullptr;
+		}
+	};
+
+	disposeImg(app->hackingGame->imgEnergyCore);
+	disposeImg(app->hackingGame->imgGameColors);
+	disposeImg(app->hackingGame->imgHelpScreenAssets);
+	app->sentryBotGame->imgHelpScreenAssets = nullptr;
+	app->vendingMachine->imgHelpScreenAssets = nullptr;
+
+	disposeImg(app->sentryBotGame->imgMatrixSkip_BG);
+	disposeImg(app->sentryBotGame->imgGameAssets);
+	disposeImg(app->sentryBotGame->imgButton);
+	disposeImg(app->sentryBotGame->imgButton2);
+	disposeImg(app->sentryBotGame->imgButton3);
+
+	disposeImg(app->vendingMachine->imgVendingGame);
+	disposeImg(app->vendingMachine->imgVending_BG);
+	disposeImg(app->vendingMachine->imgVendingBG);
+	disposeImg(app->vendingMachine->imgSubmitButton);
+	disposeImg(app->vendingMachine->imgVending_submit_pressed);
+	disposeImg(app->vendingMachine->imgVending_arrow_up);
+	disposeImg(app->vendingMachine->imgVending_arrow_up_pressed);
+	disposeImg(app->vendingMachine->imgVending_arrow_down);
+	disposeImg(app->vendingMachine->imgVending_arrow_down_pressed);
+	disposeImg(app->vendingMachine->imgVending_button_small);
 }
 
 void Canvas::drawScroll(Graphics* graphics, int n, int n2, int n3, int n4) { // J2ME
@@ -2706,8 +2748,7 @@ bool Canvas::handleEvent(int key) {
 			}
 			break;
 		case Canvas::ST_INTRO_MOVIE:
-			this->exitIntroMovie(true);
-			app->shutdown();
+			this->exitIntroMovie(false);
 			break;
 		}
 		return true;
@@ -2847,11 +2888,15 @@ bool Canvas::handleEvent(int key) {
 	else if (state == Canvas::ST_CHARACTER_SELECTION) {
 		this->handleCharacterSelectionInput(key, keyAction);
 	}
+	else if (state == Canvas::ST_LOGO) {
+		this->pacLogoTime = 121;
+	}
 	else if (state == Canvas::ST_INTRO) {
 		this->handleStoryInput(key, keyAction);
 	}
 	else if (state == Canvas::ST_INTRO_MOVIE) {
-		app->game->skipMovie = (keyAction == Enums::ACTION_FIRE);
+		app->game->skipMovie = true;
+		this->scrollingTextDone = true;
 	}
 	else if (state == Canvas::ST_EPILOGUE) {
 		if (key == 18) {
@@ -4511,8 +4556,12 @@ void Canvas::backToMain(bool b) {
 	app->render->unloadMap();
 	app->render->endFade();
 
-	app->menuSystem->imgMainBG->~Image();
+	if (app->menuSystem->imgMainBG != nullptr) {
+		app->menuSystem->imgMainBG->~Image();
+		app->menuSystem->imgMainBG = nullptr;
+	}
 	app->menuSystem->imgMainBG = app->loadImage("logo.bmp", true);
+	app->menuSystem->background = app->menuSystem->imgMainBG;
 
 	if (b) {
 		this->clearEvents(1);
@@ -6679,28 +6728,18 @@ void Canvas::initTravelMap() {
 }
 
 void Canvas::disposeTravelMap() {
-	this->imgNameHighlight->~Image();
-	this->imgNameHighlight = nullptr;
-	this->imgMagGlass->~Image();
-	this->imgMagGlass = nullptr;
-	this->imgTravelBG->~Image();
-	this->imgTravelBG = nullptr;
-	this->imgTravelPath->~Image();
-	this->imgTravelPath = nullptr;
-	this->imgSpaceShip->~Image();
-	this->imgSpaceShip = nullptr;
-	this->imgTierCloseUp->~Image();
-	this->imgTierCloseUp = nullptr;
-	this->imgEarthCloseUp->~Image();
-	this->imgEarthCloseUp = nullptr;
-	this->imgMapHorzGridLines->~Image();
-	this->imgMapHorzGridLines = nullptr;
-	this->imgMapVertGridLines->~Image();
-	this->imgMapVertGridLines = nullptr;
+	if (this->imgNameHighlight) { this->imgNameHighlight->~Image(); this->imgNameHighlight = nullptr; }
+	if (this->imgMagGlass) { this->imgMagGlass->~Image(); this->imgMagGlass = nullptr; }
+	if (this->imgTravelBG) { this->imgTravelBG->~Image(); this->imgTravelBG = nullptr; }
+	if (this->imgTravelPath) { this->imgTravelPath->~Image(); this->imgTravelPath = nullptr; }
+	if (this->imgSpaceShip) { this->imgSpaceShip->~Image(); this->imgSpaceShip = nullptr; }
+	if (this->imgTierCloseUp) { this->imgTierCloseUp->~Image(); this->imgTierCloseUp = nullptr; }
+	if (this->imgEarthCloseUp) { this->imgEarthCloseUp->~Image(); this->imgEarthCloseUp = nullptr; }
+	if (this->imgMapHorzGridLines) { this->imgMapHorzGridLines->~Image(); this->imgMapHorzGridLines = nullptr; }
+	if (this->imgMapVertGridLines) { this->imgMapVertGridLines->~Image(); this->imgMapVertGridLines = nullptr; }
 
 	// Unused
-	this->imgStarField->~Image();
-	this->imgStarField = nullptr;
+	if (this->imgStarField) { this->imgStarField->~Image(); this->imgStarField = nullptr; }
 }
 
 void Canvas::drawStarFieldPage(Graphics* graphics) {
@@ -6825,7 +6864,7 @@ void Canvas::runStarFieldFrame() {
 	unsigned int v5; // r3
 	int v6; // r6
 	signed int v7; // r0
-	int* v8; // r10
+	int32_t* v8; // r10
 	int v9; // r0
 	int v10; // r4
 	int v11; // r8
@@ -6835,7 +6874,7 @@ void Canvas::runStarFieldFrame() {
 	unsigned int v15; // r3
 	int v16; // r6
 	signed int v17; // r0
-	int* v18; // r10
+	int32_t* v18; // r10
 	int v19; // r0
 	int v20; // r4
 	int v21; // r8
@@ -7001,7 +7040,7 @@ void Canvas::playIntroMovie(Graphics* graphics) {
 		return;
 	}
 
-	if (app->game->hasSeenIntro && app->game->skipMovie) {
+	if (app->game->skipMovie || this->scrollingTextDone) {
 		this->exitIntroMovie(false);
 		return;
 	}
@@ -7103,8 +7142,10 @@ void Canvas::exitIntroMovie(bool b) {
 
 	app->game->cleanUpCamMemory();
 
-	this->imgProlog->~Image();
-	this->imgProlog = nullptr;
+	if (this->imgProlog) {
+		this->imgProlog->~Image();
+		this->imgProlog = nullptr;
+	}
 
 	if (this->dialogBuffer) {
 		this->dialogBuffer->dispose();
@@ -7716,36 +7757,21 @@ void Canvas::handleMiniGameHelpScreenScroll(int i) {
 }
 
 void Canvas::disposeCharacterSelection() {
-	this->imgCharacter_select_stat_bar->~Image();
-	this->imgCharacter_select_stat_bar = nullptr;
-	this->imgCharacter_select_stat_header->~Image();
-	this->imgCharacter_select_stat_header = nullptr;
-	this->imgTopBarFill->~Image();
-	this->imgTopBarFill = nullptr;
-	this->imgCharacter_upperbar->~Image();
-	this->imgCharacter_upperbar = nullptr;
-	this->imgCharacterSelectionAssets->~Image();
-	this->imgCharacterSelectionAssets = nullptr;
-	this->imgCharSelectionBG->~Image();
-	this->imgCharSelectionBG = nullptr;
-	this->imgMajorMugs->~Image();
-	this->imgMajorMugs = nullptr;
-	this->imgSargeMugs->~Image();
-	this->imgSargeMugs = nullptr;
-	this->imgScientistMugs->~Image();
-	this->imgScientistMugs = nullptr;
-	this->imgMajor_legs->~Image();
-	this->imgMajor_legs = nullptr;
-	this->imgMajor_torso->~Image();
-	this->imgMajor_torso = nullptr;
-	this->imgRiley_legs->~Image();
-	this->imgRiley_legs = nullptr;
-	this->imgRiley_torso->~Image();
-	this->imgRiley_torso = nullptr;
-	this->imgSarge_legs->~Image();
-	this->imgSarge_legs = nullptr;
-	this->imgSarge_torso->~Image();
-	this->imgSarge_torso = nullptr;
+	if (this->imgCharacter_select_stat_bar) { this->imgCharacter_select_stat_bar->~Image(); this->imgCharacter_select_stat_bar = nullptr; }
+	if (this->imgCharacter_select_stat_header) { this->imgCharacter_select_stat_header->~Image(); this->imgCharacter_select_stat_header = nullptr; }
+	if (this->imgTopBarFill) { this->imgTopBarFill->~Image(); this->imgTopBarFill = nullptr; }
+	if (this->imgCharacter_upperbar) { this->imgCharacter_upperbar->~Image(); this->imgCharacter_upperbar = nullptr; }
+	if (this->imgCharacterSelectionAssets) { this->imgCharacterSelectionAssets->~Image(); this->imgCharacterSelectionAssets = nullptr; }
+	if (this->imgCharSelectionBG) { this->imgCharSelectionBG->~Image(); this->imgCharSelectionBG = nullptr; }
+	if (this->imgMajorMugs) { this->imgMajorMugs->~Image(); this->imgMajorMugs = nullptr; }
+	if (this->imgSargeMugs) { this->imgSargeMugs->~Image(); this->imgSargeMugs = nullptr; }
+	if (this->imgScientistMugs) { this->imgScientistMugs->~Image(); this->imgScientistMugs = nullptr; }
+	if (this->imgMajor_legs) { this->imgMajor_legs->~Image(); this->imgMajor_legs = nullptr; }
+	if (this->imgMajor_torso) { this->imgMajor_torso->~Image(); this->imgMajor_torso = nullptr; }
+	if (this->imgRiley_legs) { this->imgRiley_legs->~Image(); this->imgRiley_legs = nullptr; }
+	if (this->imgRiley_torso) { this->imgRiley_torso->~Image(); this->imgRiley_torso = nullptr; }
+	if (this->imgSarge_legs) { this->imgSarge_legs->~Image(); this->imgSarge_legs = nullptr; }
+	if (this->imgSarge_torso) { this->imgSarge_torso->~Image(); this->imgSarge_torso = nullptr; }
 }
 
 bool Canvas::pitchIsControlled(int n, int n2, int n3) {

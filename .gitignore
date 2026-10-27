@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Build artifacts
+build/
+*.o
+*.a
+*.elf
+*.bin.dfs
+*.dfs
+*.z64
+*.v64
+*.n64
+
+# Original IPA and extracted heavy assets
+*.ipa
+filesystem/
+extracted_assets/
+tools/__pycache__/

@@ -226,9 +226,11 @@ void Graphics::FMGL_fillRect(int x, int y, int w, int h, float r, float g, float
             glColor4f(r, g, b, a);
             glVertexPointer(3, GL_FLOAT, 0, vp);
             glEnableClientState(GL_VERTEX_ARRAY);
-            glEnableClientState(GL_TEXTURE_COORD_ARRAY);
+            glDisableClientState(GL_TEXTURE_COORD_ARRAY);
             glDisableClientState(GL_COLOR_ARRAY);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            glEnable(GL_TEXTURE_2D);
+            glEnableClientState(GL_TEXTURE_COORD_ARRAY);
         }
     }
 }
@@ -322,7 +324,12 @@ void Graphics::drawRegion(Image* img, int texX, int texY, int texW, int texH, in
     y = posY;
     piDIB = img->piDIB;
 
-    if (img->texture == -1) {
+#ifdef N64
+    if (!img->EnsureTexture()) {
+        return;
+    }
+#else
+    if (img->texture == (GLuint)-1) {
         img->texWidth = 1;
         img->texHeight = 1;
 
@@ -333,7 +340,7 @@ void Graphics::drawRegion(Image* img, int texX, int texY, int texW, int texH, in
             img->texHeight = h << 1;
         }
 
-        data = (uint16_t*)std::malloc(w * h * sizeof(uint16_t));
+        data = (uint16_t*)std::malloc(img->texWidth * img->texHeight * sizeof(uint16_t));
         img->isTransparentMask = false;
 
         for (w = 0; w < piDIB->height; w++) {
@@ -352,6 +359,7 @@ void Graphics::drawRegion(Image* img, int texX, int texY, int texW, int texH, in
             std::free(data);
         }
     }
+#endif
 
     if ((flags & 1U) == 0) {
         if ((flags & 8U) != 0) {
@@ -577,7 +585,7 @@ void Graphics::drawString(Image* img, Text* text, int x, int y, int h, int flags
                 }
             }
         }
-        else if (char1 == ' ' || char1 == ' ') {
+        else if (char1 == ' ' || char1 == 'Â ') {
             if (rotateMode == 3) {
                 y -= 9;
             }

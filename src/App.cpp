@@ -29,6 +29,15 @@
 #include "JavaStream.h"
 #include "Image.h"
 #include "Graphics.h"
+#ifdef N64
+#include <libdragon.h>
+static void logN64Heap(const char* stage) {
+	heap_stats_t hs;
+	sys_get_heap_stats(&hs);
+	debugf("[MEM] %-24s used=%7d B (%4d KB)  free=%7d B (%4d KB)\n",
+	       stage, hs.used, hs.used / 1024, hs.total - hs.used, (hs.total - hs.used) / 1024);
+}
+#endif
 
 Applet::Applet() {
 	std::memset(this, 0, sizeof(Applet));
@@ -103,19 +112,33 @@ bool Applet::startup() {
 	this->gameTime = this->upTimeMs;
 	this->startupMemory = Applet::MAXMEMORY;
 
+#ifdef N64
+	logN64Heap("boot:pre-canvas");
+#endif
 	if (this->canvas->startup()) {
+#ifdef N64
+		logN64Heap("boot:post-canvas");
+		this->testImg = nullptr;
+#else
 		this->testImg = Applet::loadImage("cockpit.bmp", true);
 
 		this->canvas->loadMiniGameImages();
+#endif
 		if (this->localization->startup()) {
 			if (this->render->startup()) {
 				this->resource->initTableLoading();
 				this->loadTables();
+#ifdef N64
+				logN64Heap("boot:post-render");
+#endif
 
 				if (this->tinyGL->startup(this->render->screenWidth, this->render->screenHeight)) {
 					if (this->entityDefManager->startup()) {
 						if (this->player->startup()) {
 							if (this->menuSystem->startup()) {
+#ifdef N64
+								logN64Heap("boot:post-menus");
+#endif
 								if (this->sound->startup()) {
 									if (this->game->startup()) {
 										if (this->particleSystem->startup()) {
@@ -142,6 +165,9 @@ bool Applet::startup() {
 												//this->accelStart();
 												printf("**** Startup took %i ms\n", this->upTimeMs - time);
 												printf("**** Fragment size %i ms\n", 0);
+#ifdef N64
+												logN64Heap("boot:complete");
+#endif
 
 												return true;
 											}
@@ -155,6 +181,9 @@ bool Applet::startup() {
 			}
 		}
 	}
+#ifdef N64
+	debugf("[ERROR] Applet::startup fatal failure\n");
+#endif
 	printf("error faltal:\n");
 	return false;
 }
@@ -168,7 +197,8 @@ Image* Applet::createImage(InputStream* inputStream, bool isTransparentMask)
 	Image* img;
 	int Width, Height, offBeg, BitsPerPixel, ColorsUsed, rgb, pitch;
 	img = (Image*)std::malloc(sizeof(Image));
-	img->texture = -1;
+	std::memset(img, 0, sizeof(Image));
+	img->texture = (GLuint)-1;
 	img->piDIB = (IDIB*)std::malloc(sizeof(IDIB));
 	img->piDIB->pBmp = nullptr;
 	img->piDIB->pRGB888 = nullptr;
@@ -186,12 +216,6 @@ Image* Applet::createImage(InputStream* inputStream, bool isTransparentMask)
 	ColorsUsed = inputStream->readInt();
     inputStream->offsetCursor(4);
 
-	//printf("offBeg %d\n", offBeg);
-	//printf("Width %d\n", Width);
-	//printf("Height %d\n", Height);
-	//printf("BitsPerPixel %d\n", BitsPerPixel);
-	//printf("ColorsUsed %d\n", ColorsUsed);
-
 	// read data
 
 	if (BitsPerPixel == 4 || BitsPerPixel == 8) {
@@ -199,7 +223,6 @@ Image* Applet::createImage(InputStream* inputStream, bool isTransparentMask)
 		if (ColorsUsed == 0) {
 			ColorsUsed = 1 << (BitsPerPixel & 0xff);
 		}
-		//printf("ColorsUsed %d\n", ColorsUsed);
 
 		img->piDIB->cntRGB = ColorsUsed;
 		img->piDIB->nColorScheme = 0;
@@ -234,6 +257,10 @@ Image* Applet::createImage(InputStream* inputStream, bool isTransparentMask)
 			rgb = img->piDIB->pRGB888[i];
 			img->piDIB->pRGB565[i] = (rgb >> 8 & 0xf800) | (rgb >> 5 & 0x07e0) | (rgb >> 3 & 0x001f); // rgb888 to rgb565
 		}
+#ifdef N64
+		std::free(img->piDIB->pRGB888);
+		img->piDIB->pRGB888 = nullptr;
+#endif
 
 		// read pixels
 		img->width = img->piDIB->width;
@@ -243,13 +270,11 @@ Image* Applet::createImage(InputStream* inputStream, bool isTransparentMask)
 		pitch = BitsPerPixel * Width;
 		int _pitch = pitch;
 		if ((pitch & 7) != 0) {
-			//printf("pitch 7 %d\n", pitch);
 			ColorsUsed = (uint32_t)((int)pitch >> 0x1f) >> 0x1d;
 			_pitch = (pitch - ((pitch + ColorsUsed & 7) - ColorsUsed)) + 8;
 		}
 
 		if ((pitch & 0x1f) != 0) {
-			//printf("pitch 31 %d\n", pitch);
 			ColorsUsed = (uint32_t)((int)pitch >> 0x1f) >> 0x1b;
 			pitch = (pitch - ((pitch + ColorsUsed & 0x1f) - ColorsUsed)) + 0x20;
 		}
@@ -267,8 +292,12 @@ Image* Applet::createImage(InputStream* inputStream, bool isTransparentMask)
 			ColorsUsed = _pitch;
 		}
 
-		//printf("sVar6 %d\n", sVar6);
-		img->piDIB->pBmp = (uint8_t*)std::malloc(sVar6 * sizeof(int16_t));
+		img->piDIB->pBmp = (uint8_t*)std::malloc((size_t)sVar6 + 16);
+		if (!img->piDIB->pBmp) {
+#ifdef N64
+			debugf("[ERROR] createImage: malloc failed for %d bytes (%dx%d)\n", sVar6, Width, Height);
+#endif
+		}
 		img->piDIB->width = Width;
 		img->piDIB->pitch = Width;
 		img->piDIB->depth = BitsPerPixel;
@@ -301,18 +330,11 @@ Image* Applet::createImage(InputStream* inputStream, bool isTransparentMask)
 		inputStream->offsetCursor(iVar8 * Height);
 
 		if ((short)BitsPerPixel == 4) {
-			uint8_t* pbVar4 = (uint8_t*)std::malloc(sVar6);
-			uint8_t* _data = pbVar4;
-			for (ColorsUsed = 0; ColorsUsed < sVar6 >> 1; ColorsUsed = ColorsUsed + 1) {
-				uint8_t bVar1 = img->piDIB->pBmp[ColorsUsed];
-				_data[0] = bVar1 >> 4;
-				_data[1] = bVar1 & 0xf;
-				_data += 2;
+			for (int k = (sVar6 >> 1) - 1; k >= 0; k--) {
+				uint8_t bVar1 = img->piDIB->pBmp[k];
+				img->piDIB->pBmp[2 * k + 1] = bVar1 & 0xf;
+				img->piDIB->pBmp[2 * k + 0] = bVar1 >> 4;
 			}
-			for (ColorsUsed = 0; ColorsUsed < sVar6; ColorsUsed = ColorsUsed + 1) {
-				img->piDIB->pBmp[ColorsUsed] = pbVar4[ColorsUsed];
-			}
-			std::free(pbVar4);
 		}
 		img->width = img->piDIB->width;
 		img->height = img->piDIB->height;
@@ -328,7 +350,7 @@ Image* Applet::createImage(InputStream* inputStream, bool isTransparentMask)
 }
 
 Image* Applet::loadImage(char* fileName, bool isTransparentMask) {
-	InputStream iStream = InputStream();
+	InputStream iStream;
 	Image* img;
 
 	if (iStream.loadResource(fileName) == 0) {
@@ -338,7 +360,6 @@ Image* Applet::loadImage(char* fileName, bool isTransparentMask) {
 	img = this->createImage(&iStream, isTransparentMask);
 
 	iStream.close();
-	iStream.~InputStream();
 	return img;
 }
 
@@ -357,6 +378,9 @@ void Applet::Error(const char* fmt, ...) {
 
 	SDL_SetWindowFullscreen(CAppContainer::getInstance()->sdlGL->window, 0);
 
+#ifdef N64
+	debugf("[Applet::Error] %s\n", errMsg);
+#endif
 	printf("%s", errMsg);
 
 	const SDL_MessageBoxButtonData buttons[] = {
@@ -477,18 +501,26 @@ void Applet::loadRuntimeImages() {
 		this->hud->imgBottomBarIcons = this->loadImage("Hud_Fill.bmp", true);
 		this->hud->imgHudFill = this->loadImage("Hud_Actions.bmp", true);
 		
-		this->hud->imgPlayerFrameNormal->~Image();
-		this->hud->imgPlayerFrameNormal = nullptr;
-		this->hud->imgPlayerFrameActive->~Image();
-		this->hud->imgPlayerFrameActive = nullptr;
+		if (this->hud->imgPlayerFrameNormal) {
+			this->hud->imgPlayerFrameNormal->~Image();
+			this->hud->imgPlayerFrameNormal = nullptr;
+		}
+		if (this->hud->imgPlayerFrameActive) {
+			this->hud->imgPlayerFrameActive->~Image();
+			this->hud->imgPlayerFrameActive = nullptr;
+		}
 
 		this->hud->imgPlayerFrameNormal = this->loadImage("HUD_Player_frame_Normal.bmp", true);
 		this->hud->imgPlayerFrameActive = this->loadImage("HUD_Player_frame_Active.bmp", true);
 
-		this->hud->imgPlayerFaces->~Image();
-		this->hud->imgPlayerFaces = nullptr;
-		this->hud->imgPlayerActive->~Image();
-		this->hud->imgPlayerActive = nullptr;
+		if (this->hud->imgPlayerFaces) {
+			this->hud->imgPlayerFaces->~Image();
+			this->hud->imgPlayerFaces = nullptr;
+		}
+		if (this->hud->imgPlayerActive) {
+			this->hud->imgPlayerActive->~Image();
+			this->hud->imgPlayerActive = nullptr;
+		}
 
 		if (this->player->characterChoice == 1) {
 			this->hud->imgPlayerFaces = this->loadImage("Hud_Player.bmp", true);
@@ -515,36 +547,21 @@ void Applet::loadRuntimeImages() {
 }
 
 void Applet::freeRuntimeImages() {
-	this->canvas->imgMapCursor->~Image();
-	this->canvas->imgMapCursor = nullptr;
-	this->canvas->imgUIImages->~Image();
-	this->canvas->imgUIImages = nullptr;
-	this->canvas->imgDialogScroll->~Image();
-	this->canvas->imgDialogScroll = nullptr;
-	this->hud->imgScope->~Image();
-	this->hud->imgScope = nullptr;
-	this->hud->imgDamageVignette->~Image();
-	this->hud->imgDamageVignette = nullptr;
-	this->hud->imgActions->~Image();
-	this->hud->imgActions = nullptr;
-	this->hud->imgBottomBarIcons->~Image();
-	this->hud->imgBottomBarIcons = nullptr;
-	this->hud->imgHudFill->~Image();
-	this->hud->imgHudFill = nullptr;
-	this->hud->imgPlayerFaces->~Image();
-	this->hud->imgPlayerFaces = nullptr;
-	this->hud->imgPlayerActive->~Image();
-	this->hud->imgPlayerActive = nullptr;
-	this->hud->imgDamageVignetteBot->~Image();
-	this->hud->imgDamageVignetteBot = nullptr;
-	this->hud->imgHudTest->~Image();
-	this->hud->imgHudTest = nullptr;
-	this->hud->imgSentryBotFace->~Image();
-	this->hud->imgSentryBotFace = nullptr;
-	this->hud->imgSentryBotActive->~Image();
-	this->hud->imgSentryBotActive = nullptr;
-	this->hud->imgCockpitOverlay->~Image();
-	this->hud->imgCockpitOverlay = nullptr;
+	if (this->canvas->imgMapCursor) { this->canvas->imgMapCursor->~Image(); this->canvas->imgMapCursor = nullptr; }
+	if (this->canvas->imgUIImages) { this->canvas->imgUIImages->~Image(); this->canvas->imgUIImages = nullptr; }
+	if (this->canvas->imgDialogScroll) { this->canvas->imgDialogScroll->~Image(); this->canvas->imgDialogScroll = nullptr; }
+	if (this->hud->imgScope) { this->hud->imgScope->~Image(); this->hud->imgScope = nullptr; }
+	if (this->hud->imgDamageVignette) { this->hud->imgDamageVignette->~Image(); this->hud->imgDamageVignette = nullptr; }
+	if (this->hud->imgActions) { this->hud->imgActions->~Image(); this->hud->imgActions = nullptr; }
+	if (this->hud->imgBottomBarIcons) { this->hud->imgBottomBarIcons->~Image(); this->hud->imgBottomBarIcons = nullptr; }
+	if (this->hud->imgHudFill) { this->hud->imgHudFill->~Image(); this->hud->imgHudFill = nullptr; }
+	if (this->hud->imgPlayerFaces) { this->hud->imgPlayerFaces->~Image(); this->hud->imgPlayerFaces = nullptr; }
+	if (this->hud->imgPlayerActive) { this->hud->imgPlayerActive->~Image(); this->hud->imgPlayerActive = nullptr; }
+	if (this->hud->imgDamageVignetteBot) { this->hud->imgDamageVignetteBot->~Image(); this->hud->imgDamageVignetteBot = nullptr; }
+	if (this->hud->imgHudTest) { this->hud->imgHudTest->~Image(); this->hud->imgHudTest = nullptr; }
+	if (this->hud->imgSentryBotFace) { this->hud->imgSentryBotFace->~Image(); this->hud->imgSentryBotFace = nullptr; }
+	if (this->hud->imgSentryBotActive) { this->hud->imgSentryBotActive->~Image(); this->hud->imgSentryBotActive = nullptr; }
+	if (this->hud->imgCockpitOverlay) { this->hud->imgCockpitOverlay->~Image(); this->hud->imgCockpitOverlay = nullptr; }
 }
 
 void Applet::setFont(int fontType) {

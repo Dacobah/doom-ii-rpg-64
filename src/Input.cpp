@@ -1,5 +1,9 @@
 #include <stdexcept>
 
+#ifdef N64
+#include <libdragon.h>
+#endif
+
 #include "CAppContainer.h"
 #include "App.h"
 #include "Canvas.h"
@@ -594,6 +598,11 @@ bool isGamepadAxisInputJustReleased() noexcept { // [GEC]
 //----------------------
 
 void controllerVibrate(int duration_ms) noexcept {
+#ifdef N64
+    if (joypad_get_rumble_supported(JOYPAD_PORT_1)) {
+        joypad_set_rumble_active(JOYPAD_PORT_1, duration_ms > 0);
+    }
+#else
     float intensity = (float)gVibrationIntensity / 100.f;
     // Use game controller
     if (gpGameController) {
@@ -606,6 +615,7 @@ void controllerVibrate(int duration_ms) noexcept {
         SDL_HapticRumbleStop(gJoyHaptic);
         SDL_HapticRumblePlay(gJoyHaptic, 1.0 * intensity, duration_ms);
     }
+#endif
 }
 
 Input::Input() {
@@ -683,7 +693,7 @@ void Input::unBind(int* keyBinds, int index)
 void Input::setBind(int* keyBinds, int keycode) {
     int i;
 
-    // Examina si existe anteriormente, si es asÌ, se desvincular· de la lista
+    // Examina si existe anteriormente, si es as√≠, se desvincular√° de la lista
     // Examines whether it exists previously, if so, it will be unbind from the list
     for (i = 0; i < KEYBINDS_MAX; i++) {
         if (keyBinds[i] == keycode) {
@@ -707,6 +717,104 @@ void Input::setInputBind(int scancode) {
     int keyMapId = app->menuSystem->items[app->menuSystem->selectedIndex].param;
     this->setBind(keyMappingTemp[keyMapId].keyBinds, scancode);
 }
+
+#ifdef N64
+
+void Input::handleEvents() noexcept {
+    Canvas* canvas = CAppContainer::getInstance()->app->canvas;
+    joypad_poll();
+
+    if (!joypad_is_connected(JOYPAD_PORT_1)) {
+        return;
+    }
+
+    joypad_buttons_t pressed = joypad_get_buttons_pressed(JOYPAD_PORT_1);
+    joypad_buttons_t held = joypad_get_buttons_held(JOYPAD_PORT_1);
+    joypad_inputs_t inputs = joypad_get_inputs(JOYPAD_PORT_1);
+
+    static int repeatTimer = 0;
+    static int lastAction = 0;
+    int curAction = 0;
+
+    // Analog stick direction conversion (Deadzone = 35)
+    bool stickUp    = (inputs.stick_y > 35);
+    bool stickDown  = (inputs.stick_y < -35);
+    bool stickLeft  = (inputs.stick_x < -35);
+    bool stickRight = (inputs.stick_x > 35);
+
+    // Directional actions (Up / Down / Left / Right)
+    if (pressed.d_up || stickUp) {
+        curAction = AVK_UP | AVK_MENU_UP;
+    } else if (pressed.d_down || stickDown) {
+        curAction = AVK_DOWN | AVK_MENU_DOWN;
+    } else if (pressed.d_left || stickLeft) {
+        curAction = AVK_LEFT | AVK_MENU_PAGE_UP;
+    } else if (pressed.d_right || stickRight) {
+        curAction = AVK_RIGHT | AVK_MENU_PAGE_DOWN;
+    }
+    // Strafe actions (L & R triggers)
+    else if (pressed.l) {
+        curAction = AVK_MOVELEFT;
+    } else if (pressed.r) {
+        curAction = AVK_MOVERIGHT;
+    }
+    // Action / Fire / Talk / Select (A button)
+    else if (pressed.a) {
+        curAction = AVK_SELECT | AVK_MENU_SELECT;
+    }
+    // Back / Pass Turn (B button)
+    else if (pressed.b) {
+        if (canvas->state == Canvas::ST_MENU) {
+            curAction = AVK_MENUOPEN | AVK_MENU_OPEN;
+        } else {
+            curAction = AVK_PASSTURN;
+        }
+    }
+    // Start button: Menu / Pause
+    else if (pressed.start) {
+        curAction = AVK_MENUOPEN | AVK_MENU_OPEN;
+    }
+    // Z trigger: Automap
+    else if (pressed.z) {
+        curAction = AVK_AUTOMAP;
+    }
+    // C-buttons shortcuts
+    else if (pressed.c_up) {
+        curAction = AVK_NEXTWEAPON;
+    } else if (pressed.c_down) {
+        curAction = AVK_PREVWEAPON;
+    } else if (pressed.c_left) {
+        curAction = AVK_ITEMS_INFO;
+    } else if (pressed.c_right) {
+        curAction = AVK_PDA;
+    }
+
+    // Auto-repeat for directions if held
+    bool isDirHeld = (held.d_up || held.d_down || held.d_left || held.d_right ||
+                      stickUp || stickDown || stickLeft || stickRight);
+
+    if (curAction != 0) {
+        canvas->keyDownCausedMove = true;
+        canvas->addEvents(curAction);
+        lastAction = curAction;
+        repeatTimer = 0;
+    } else if (isDirHeld && lastAction != 0) {
+        repeatTimer++;
+        if (repeatTimer >= 10) { // Initial delay
+            canvas->keyDownCausedMove = true;
+            canvas->addEvents(lastAction);
+            repeatTimer = 6; // Repeat interval
+        }
+    } else {
+        lastAction = 0;
+        repeatTimer = 0;
+    }
+}
+
+void Input::consumeEvents() noexcept {
+}
+
+#else // !N64
 
 void Input::handleEvents() noexcept {
     Applet* app = CAppContainer::getInstance()->app;
@@ -1115,3 +1223,5 @@ void Input::consumeEvents() noexcept {
     // Clear other events
     //gbWindowFocusJustLost = false;
 }
+
+#endif // !N64

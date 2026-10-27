@@ -18,6 +18,21 @@ public:
 	int texWidth;
 	int texHeight;
 	GLuint texture;
+#ifdef N64
+	GLuint* tileTextures;
+	uint16_t numTilesX;
+	uint16_t numTilesY;
+	uint16_t tileW;
+	uint16_t tileH;
+	uint32_t glBytes;
+	Image* lruPrev;
+	Image* lruNext;
+
+	bool EnsureTexture();
+	void ReleaseGLTextures();
+	void TouchLRU();
+	void DrawQuadTiled(int texX, int texY, int texW, int texH, float quadScale = 1.0f, bool portalMode = false);
+#endif
 
 	// Constructor
 	Image();

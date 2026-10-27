@@ -2,6 +2,15 @@
 #include <al.h>
 #include <alc.h>
 
+#ifdef N64
+#include <audio.h>
+#include <mixer.h>
+#include <wav64.h>
+
+static wav64_t n64_channel_wav[10];
+static bool n64_channel_loaded[10] = { false };
+#endif
+
 #include "App.h"
 #include "CAppContainer.h"
 #include "Sound.h"
@@ -49,6 +58,14 @@ bool Sound::startup() {
 }
 
 void Sound::openAL_Init() {
+#ifdef N64
+	audio_init(44100, 4);
+	mixer_init(16);
+	for (int i = 0; i < 10; i++) {
+		this->channel[i].bufferId = i;
+		this->channel[i].sourceId = i;
+	}
+#else
 	ALenum error;
 	printf("Sound::openAL_Init\n");
 
@@ -79,9 +96,21 @@ void Sound::openAL_Init() {
 		alListener3i(AL_VELOCITY, 0, 0, 0);
 		OpenAL_ERROR(546);
 	}
+#endif
 }
 
 void Sound::openAL_Close() {
+#ifdef N64
+	for (int i = 0; i < 10; i++) {
+		if (n64_channel_loaded[i]) {
+			mixer_ch_stop(i);
+			wav64_close(&n64_channel_wav[i]);
+			n64_channel_loaded[i] = false;
+		}
+	}
+	mixer_close();
+	audio_close();
+#else
 	for (int i = 0; i < 10; i++) {
 		alDeleteBuffers(1, &this->channel[i].bufferId);
 		alDeleteSources(1, &this->channel[i].sourceId);
@@ -96,6 +125,7 @@ void Sound::openAL_Close() {
 		alcCloseDevice(this->alDevice);
 		this->alDevice = nullptr;
 	}
+#endif
 }
 
 void Sound::openAL_SetSystemVolume(int volume) {
@@ -109,7 +139,14 @@ void Sound::openAL_SetVolume(ALuint source, int volume) {
 	if (volume > 100) {
 		volume = 100;
 	}
+#ifdef N64
+	if (source < 10) {
+		float v = (float)volume / 100.0f;
+		mixer_ch_set_vol(source, v, v);
+	}
+#else
 	alSourcef(source, AL_MAX_GAIN, (float)volume / 100.0);
+#endif
 }
 
 void Sound::openAL_Suspend() {
@@ -127,11 +164,18 @@ void Sound::openAL_Resume() {
 }
 
 bool Sound::openAL_IsPlaying(ALuint source) {
+#ifdef N64
+	if (source < 10) {
+		return mixer_ch_playing(source);
+	}
+	return false;
+#else
 	ALenum error;
 	ALint source_state;
 	alGetSourcei(source, AL_SOURCE_STATE, &source_state);
 	OpenAL_ERROR(685);
 	return (source_state == AL_PLAYING) ? true : false;
+#endif
 }
 
 bool Sound::openAL_IsPaused(ALuint source) {
@@ -167,14 +211,39 @@ bool Sound::openAL_GetALFormat(AudioStreamBasicDescription aStreamBD, ALenum* fo
 }
 
 void Sound::openAL_PlaySound(ALuint source, ALint loop) {
+#ifdef N64
+	if (source < 10 && n64_channel_loaded[source]) {
+		wav64_set_loop(&n64_channel_wav[source], loop != 0);
+		wav64_play(&n64_channel_wav[source], source);
+	}
+#else
 	ALenum error;
 	alSourcei(source, AL_LOOPING, (loop != 0) ? AL_TRUE : AL_FALSE);
 	OpenAL_ERROR(708);
 	alSourcePlay(source);
 	OpenAL_ERROR(711);
+#endif
 }
 
 void Sound::openAL_LoadSound(int resID, Sound::SoundStream* channel) {
+#ifdef N64
+	int ch = channel->sourceId;
+	if (ch >= 0 && ch < 10) {
+		if (n64_channel_loaded[ch]) {
+			mixer_ch_stop(ch);
+			wav64_close(&n64_channel_wav[ch]);
+			n64_channel_loaded[ch] = false;
+		}
+		int index = (uint16_t)(resID - 1000);
+		if (index >= 0 && index < (int)(sizeof(Sounds::RESOURCE_FILE_NAMES) / sizeof(char*))) {
+			const char* wavName = Sounds::RESOURCE_FILE_NAMES[index];
+			char romPath[256];
+			snprintf(romPath, sizeof(romPath), "rom:/Packages/sounds2/%s64", wavName);
+			wav64_open(&n64_channel_wav[ch], romPath);
+			n64_channel_loaded[ch] = true;
+		}
+	}
+#else
 	ALenum error;
 	printf("openAL_LoadSound... resID: %d buffer: %d\n", resID, channel->bufferId);
 	int index = (uint16_t)(resID - 1000);
@@ -187,6 +256,7 @@ void Sound::openAL_LoadSound(int resID, Sound::SoundStream* channel) {
 	else {
 		this->app->Error("Sound resource not found\n!");
 	}
+#endif
 }
 
 bool Sound::openAL_LoadWAVFromFile(ALuint bufferId, const char* fileName) {
@@ -278,6 +348,17 @@ bool Sound::openAL_OpenAudioFile(const char* fileName, InputStream* IS) {
 }
 
 bool Sound::openAL_LoadAllSounds() {
+#ifdef N64
+	if (this->soundsLoaded == false) {
+		for (int i = 0; i < 10; i++) {
+			this->channel[i].bufferId = i;
+			this->channel[i].sourceId = i;
+		}
+		this->soundsLoaded = true;
+		return true;
+	}
+	return false;
+#else
 	ALenum error;
 	if (this->soundsLoaded == false) {
 		for (int i = 0; i < 10; i++) {
@@ -292,6 +373,7 @@ bool Sound::openAL_LoadAllSounds() {
 	}
 
 	return false;
+#endif
 }
 
 
@@ -473,7 +555,13 @@ int Sound::getFreeSlot(int a2) {
 
 void Sound::soundStop() {
 	for (int i = 0; i < 10; i++) {
+#ifdef N64
+		if (n64_channel_loaded[i]) {
+			mixer_ch_stop(i);
+		}
+#else
 		alSourceStop(this->channel[i].sourceId);
+#endif
 		this->channel[i].priority = 1;
 		this->channel[i].fadeInProgress = false;
 	}
@@ -494,7 +582,13 @@ void Sound::stopSound(int resID, bool fadeOut) {
 				}
 			}
 			else {
+#ifdef N64
+				if (n64_channel_loaded[i]) {
+					mixer_ch_stop(i);
+				}
+#else
 				alSourceStop(this->channel[i].sourceId);
+#endif
 				this->channel[i].priority = 1;
 				this->channel[i].fadeInProgress = false;
 			}

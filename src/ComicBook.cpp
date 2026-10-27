@@ -442,6 +442,11 @@ void ComicBook::loadImage(int index, bool vComic) {
 
 
 void ComicBook::CheckImageExistence(Image* image) {
+#ifdef N64
+    if (!image || !image->piDIB)
+        return;
+    image->EnsureTexture();
+#else
     uint8_t* pBmp;
     uint16_t* data;
     int texWidth, texHeight;
@@ -449,7 +454,7 @@ void ComicBook::CheckImageExistence(Image* image) {
     if (!image->piDIB)
         return;
 
-    if (image->texture == -1) {
+    if (image->texture == (GLuint)-1) {
 
         pBmp = image->piDIB->pBmp;
         image->texWidth = 1;
@@ -482,10 +487,12 @@ void ComicBook::CheckImageExistence(Image* image) {
             std::free(data);
         }
     }
+#endif
 }
 
 void ComicBook::DrawImage(Image* image, int a3, int a4, char a5, float alpha, char a7)
 {
+    if (!image) return;
     PFNGLACTIVETEXTUREPROC glActiveTexture = (PFNGLACTIVETEXTUREPROC)SDL_GL_GetProcAddress("glActiveTexture");
 
     int v10; // r3
@@ -493,16 +500,10 @@ void ComicBook::DrawImage(Image* image, int a3, int a4, char a5, float alpha, ch
     float height; // s11
     float v13; // s17
     float v14; // s16
-    float v15; // s14
-    float v16; // s15
-    float v17; // s12
-    float v18; // s14
-    float v19; // s13
-    float v20; // s15
-    float vp[12]; // [sp+4h] [bp-7Ch] BYREF
-    float st[8]; // [sp+34h] [bp-4Ch] BYREF
 
     this->CheckImageExistence(image);
+    if (image->texture == 0 || image->texture == (GLuint)-1) return;
+
     v10 = (uint8_t)a5;
     width = (float)image->width;
     height = (float)image->height;
@@ -515,6 +516,37 @@ void ComicBook::DrawImage(Image* image, int a3, int a4, char a5, float alpha, ch
     }
     v13 = width * 0.5;
     v14 = height * 0.5;
+
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    glColor4f(1.0, 1.0, 1.0, alpha);
+    glDisable(GL_ALPHA_TEST);
+    glAlphaFunc(GL_GREATER, 0);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glEnable(GL_TEXTURE_2D);
+    glActiveTexture(GL_TEXTURE0);
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+    if (a5)
+    {
+        glTranslatef((float)(v14 + (float)a3) + (float)(240.0 - v14), v13 + (float)a4, 0.0);
+        glRotatef(-90.0, 0.0, 0.0, 1.0);
+    }
+    else
+    {
+        glTranslatef(v13 + (float)a3, v14 + (float)a4, 0.0);
+    }
+#ifdef N64
+    if (a7) {
+        glScalef(-1.0f, -1.0f, 1.0f);
+    }
+    image->DrawQuadTiled(0, 0, image->width, image->height, 1.0f, false);
+#else
+    float v15, v16, v17, v18, v19, v20;
+    float vp[12];
+    float st[8];
     vp[2] = 0.5;
     vp[5] = 0.5;
     vp[0] = width * 0.5;
@@ -553,17 +585,7 @@ void ComicBook::DrawImage(Image* image, int a3, int a4, char a5, float alpha, ch
         st[6] = v17;
         st[7] = v19;
     }
-    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-    glColor4f(1.0, 1.0, 1.0, alpha);
-    glDisable(GL_ALPHA_TEST);
-    glAlphaFunc(GL_GREATER, 0);
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glEnable(GL_TEXTURE_2D);
-    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, image->texture);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glVertexPointer(3, GL_FLOAT, 0, &vp);
@@ -571,19 +593,8 @@ void ComicBook::DrawImage(Image* image, int a3, int a4, char a5, float alpha, ch
     glTexCoordPointer(2, GL_FLOAT, 0, &st);
     glEnableClientState(GL_TEXTURE_COORD_ARRAY);
     glDisableClientState(GL_COLOR_ARRAY);
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-    if (a5)
-    {
-        glTranslatef((float)(v14 + (float)a3) + (float)(240.0 - v14), v13 + (float)a4, 0.0);
-        glRotatef(-90.0, 0.0, 0.0, 1.0);
-    }
-    else
-    {
-        glTranslatef(v13 + (float)a3, v14 + (float)a4, 0.0);
-    }
     glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+#endif
     glPopMatrix();
 }
 

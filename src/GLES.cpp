@@ -12,6 +12,9 @@
 #include "Enums.h"
 #include "Image.h"
 #include "Utils.h"
+#ifdef N64
+#include <libdragon.h>
+#endif
 
 gles* _glesObj;
 
@@ -59,6 +62,11 @@ void gles::GLInit(Render* render) {
 }
 
 bool gles::ClearBuffer(int color) {
+#ifdef N64
+	if (!rdpq_is_attached()) {
+		return false;
+	}
+#endif
 	if (this->isInit)
 	{
 		float r = COLOR_BYTE_TO_FLOAT(color >> 16 & 0xff);
@@ -75,6 +83,11 @@ bool gles::ClearBuffer(int color) {
 }
 
 void gles::SetGLState() {
+#ifdef N64
+	if (!rdpq_is_attached()) {
+		return;
+	}
+#endif
 
 	PFNGLACTIVETEXTUREPROC glActiveTexture = (PFNGLACTIVETEXTUREPROC)SDL_GL_GetProcAddress("glActiveTexture");
 	PFNGLCLIENTACTIVETEXTUREPROC glClientActiveTexture = (PFNGLCLIENTACTIVETEXTUREPROC)SDL_GL_GetProcAddress("glClientActiveTexture");
@@ -126,7 +139,12 @@ void gles::BeginFrame(int x, int y, int w, int h, int* mtxView, int* mtxProjecti
 		posY = (64 + 1); // Panel_bottom status bar height?
 	}
 
-#if 0 //iPhone
+#ifdef N64
+	this->vPortRect[0] = (posX * 320) / Applet::IOS_WIDTH;
+	this->vPortRect[1] = 13 + ((posY * 213) / Applet::IOS_HEIGHT);
+	this->vPortRect[2] = (w * 320) / Applet::IOS_WIDTH;
+	this->vPortRect[3] = (h * 213) / Applet::IOS_HEIGHT;
+#elif 0 //iPhone
 	this->vPortRect[0] = gles::scale * posY;
 	this->vPortRect[1] = gles::scale * posX;
 	this->vPortRect[3] = gles::scale * w;
@@ -175,12 +193,12 @@ void gles::BeginFrame(int x, int y, int w, int h, int* mtxView, int* mtxProjecti
 		this->projectionMatrix[14] *= 0.5f;
 	}
 
-	uint8_t* fogColor = (uint8_t*)&this->tinyGL->fogColor;
+	uint32_t fc = (uint32_t)this->tinyGL->fogColor;
 
-	this->fogColor[2] = COLOR_BYTE_TO_FLOAT(fogColor[0]);
-	this->fogColor[1] = COLOR_BYTE_TO_FLOAT(fogColor[1]);
-	this->fogColor[0] = COLOR_BYTE_TO_FLOAT(fogColor[2]);
-	this->fogColor[3] = COLOR_BYTE_TO_FLOAT(fogColor[3]);
+	this->fogColor[2] = COLOR_BYTE_TO_FLOAT(fc & 0xff);
+	this->fogColor[1] = COLOR_BYTE_TO_FLOAT((fc >> 8) & 0xff);
+	this->fogColor[0] = COLOR_BYTE_TO_FLOAT((fc >> 16) & 0xff);
+	this->fogColor[3] = COLOR_BYTE_TO_FLOAT((fc >> 24) & 0xff);
 
 	if (this->fogColor[3] == 0.0f) {
 		this->fogColor[3] = 1.0f;
@@ -202,6 +220,11 @@ void gles::BeginFrame(int x, int y, int w, int h, int* mtxView, int* mtxProjecti
 }
 
 void gles::ResetGLState() {
+#ifdef N64
+	if (!rdpq_is_attached()) {
+		return;
+	}
+#endif
 	SDLGL* sdlGL = CAppContainer::getInstance()->sdlGL;
 	int width = sdlGL->vidWidth;
 	int height = sdlGL->vidHeight;
@@ -215,8 +238,14 @@ void gles::ResetGLState() {
 	this->renderMode = -1;
 	glDisable(GL_FOG);
 	glDisable(GL_BLEND);
+#ifdef N64
+	(void)width; (void)height;
+	glViewport(0, 13, 320, 213);
+	glScissor(0, 13, 320, 213);
+#else
 	glViewport(0, 0, width, height);
 	glScissor(0, 0, width, height);
+#endif
 	//glViewport(0, 0, 320, 480);
 	//glScissor(0, 0, 320, 480);
 	glMatrixMode(GL_PROJECTION);
@@ -237,8 +266,13 @@ void gles::CreateFadeTexture(int mediaID) {
 	#define FADE_WIDTH 16
 	#define FADE_HEIGHT 64
 
+#ifdef N64
+	static constexpr int MAX_ACTIVE_TEXELS = 0x40000;
+#else
+	static constexpr int MAX_ACTIVE_TEXELS = 0x800000;
+#endif
 	this->activeTexels += (FADE_WIDTH * FADE_HEIGHT);
-	while (this->activeTexels > 0x800000)
+	while (this->activeTexels > MAX_ACTIVE_TEXELS)
 	{
 		ct = this->activeChain.prev;
 		assert(ct != &activeChain);
@@ -274,6 +308,8 @@ void gles::CreateFadeTexture(int mediaID) {
 
 	glGenTextures(1, &ct->texnum);
 	glBindTexture(GL_TEXTURE_2D, ct->texnum);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	uint8_t* pixels = (uint8_t*)std::malloc((FADE_WIDTH * FADE_HEIGHT) * sizeof(int));
 	std::memset(pixels, 0x00, (FADE_WIDTH * FADE_HEIGHT) * sizeof(int));
 	int alpha = 255;
@@ -476,6 +512,7 @@ void gles::UnloadSkyMap() {
 			chain->next = 0;
 			glDeleteTextures(1, &chain->texnum);
 			chain->texnum = 0;
+			this->activeTexels -= chain->width * chain->height;
 		}
 	}
 }
@@ -1059,14 +1096,31 @@ void gles::CreateTextureForMediaID(int n, int mediaID, bool b) {
 		v54 += 2;
 	} while (v54 != 512);
 
+#ifdef N64
+	static constexpr int MAX_ACTIVE_TEXELS = 0x40000;
+	int texW = width;
+	int texH = height;
+	if (texW < 4) texW = 4;
+	if (texH < 4) texH = 4;
+	while (texW * texH > 2048) {
+		if (texW >= texH && texW > 4) {
+			texW >>= 1;
+		} else if (texH > 4) {
+			texH >>= 1;
+		} else {
+			break;
+		}
+	}
+	this->activeTexels = (texW * texH) + this->activeTexels;
+#else
+	static constexpr int MAX_ACTIVE_TEXELS = 0x800000;
 	this->activeTexels = __len + this->activeTexels;
-	while (this->activeTexels > 0x800000) {
+#endif
+	while (this->activeTexels > MAX_ACTIVE_TEXELS) {
 		ct = this->activeChain.prev;
 
 		assert(ct != &activeChain);
 		//__assert_rtn("CreateTextureForMediaID","/Users/greghodges/doom2rpg/trunk/Doom2rpg_iphone/xcode/Classes/GLES.cpp", 753,"ct != &activeChain");
-
-		printf ("Freeing media ID %i, %ix%i\n", (int)((intptr_t)ct - (intptr_t)this->chains) / sizeof(glChain), ct->width, ct->height);
 
 		next = ct->next;
 		next->prev = ct->prev;
@@ -1081,30 +1135,40 @@ void gles::CreateTextureForMediaID(int n, int mediaID, bool b) {
 
 	ct = this->chains + mediaID;
 	assert(ct->texnum == 0);
-	//__assert_rtn("CreateTextureForMediaID","/Users/greghodges/doom2rpg/trunk/Doom2rpg_iphone/xcode/Classes/GLES.cpp", 774,"ct->texnum == 0");
-
 	assert(ct->next == nullptr);
-	//__assert_rtn("CreateTextureForMediaID","/Users/greghodges/doom2rpg/trunk/Doom2rpg_iphone/xcode/Classes/GLES.cpp", 775,"ct->next == NULL");
-
 	assert(ct->prev == nullptr);
-	//__assert_rtn("CreateTextureForMediaID","/Users/greghodges/doom2rpg/trunk/Doom2rpg_iphone/xcode/Classes/GLES.cpp", 776,"ct->prev == NULL");
 
 	next = this->activeChain.next;
 	ct->next = next;
 	ct->prev = &this->activeChain;
 	next->prev = ct;
 	ct->prev->next = ct;
+#ifdef N64
+	ct->width = texW;
+	ct->height = texH;
+#else
 	ct->width = width;
 	ct->height = height;
-	printf("Allocating media ID %i, %ix%i, activeTexels = %3.1f meg\n", (int)((intptr_t)ct - (intptr_t)this->chains) / sizeof(glChain), width, height, BYTES_TO_MEGABYTES(this->activeTexels));
+#endif
 
 	glGenTextures(1, &ct->texnum);
 	glBindTexture(GL_TEXTURE_2D, ct->texnum);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
-	//PFNGLCOMPRESSEDTEXIMAGE2DPROC glCompressedTexImage2D = (PFNGLCOMPRESSEDTEXIMAGE2DPROC)SDL_GL_GetProcAddress("glCompressedTexImage2D");
-
-	//glCompressedTexImage2D(GL_TEXTURE_2D, 0, GL_PALETTE8_RGB5_A1_OES, width, height, 0, height * width + 512, data);
-
+#ifdef N64
+	static uint16_t s_texData3D[2048];
+	uint16_t* texPal = (uint16_t*)data;
+	uint8_t* texData8 = (uint8_t*)data + 512;
+	for (int i = 0; i < texH; i++) {
+		int srcY = (i * height) / texH;
+		for (int j = 0; j < texW; j++) {
+			int srcX = (j * width) / texW;
+			s_texData3D[(i * texW) + j] = texPal[texData8[(srcY * width) + srcX]];
+		}
+	}
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texW, texH, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, s_texData3D);
+#else
 	uint16_t* texData = (uint16_t*)std::malloc(width * height * 2);
 	uint16_t* texPal = (uint16_t*)data;
 	uint8_t* texData8 = (uint8_t*)data + 512;
@@ -1116,6 +1180,7 @@ void gles::CreateTextureForMediaID(int n, int mediaID, bool b) {
 
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, texData);
 	std::free(texData);
+#endif
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, v70 ? GL_LINEAR : GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, v70 ? GL_LINEAR : GL_NEAREST);
@@ -1160,18 +1225,35 @@ bool gles::DrawSkyMap() {
 }
 
 void gles::DrawPortalTexture(Image* img, int x, int y, int w, int h, float tx, float ty, float scale, float angle, char mode) {
+	if (!img || !img->piDIB)
+		return;
+
+	PFNGLACTIVETEXTUREPROC glActiveTexture = (PFNGLACTIVETEXTUREPROC)SDL_GL_GetProcAddress("glActiveTexture");
+
+#ifdef N64
+	if (!img->EnsureTexture())
+		return;
+
+	float scaleW = (float)((float)w * 0.5f) * scale;
+	float scaleH = (float)((float)h * 0.5f) * scale;
+
+	glEnable(GL_TEXTURE_2D);
+	glActiveTexture(GL_TEXTURE0);
+	glMatrixMode(GL_MODELVIEW);
+	glPushMatrix();
+	glLoadIdentity();
+	glTranslatef(scaleW + tx, scaleH + ty, 0.0);
+	glRotatef(angle, 0.0, 0.0, 1.0);
+	img->DrawQuadTiled(x, y, w, h, scale, mode != 0);
+	glPopMatrix();
+#else
 	uint8_t* pBmp;
 	uint16_t* data;
 	float vp[12];
 	float st[8];
 	int texWidth, texHeight;
 
-	PFNGLACTIVETEXTUREPROC glActiveTexture = (PFNGLACTIVETEXTUREPROC)SDL_GL_GetProcAddress("glActiveTexture");
-
-	if (!img->piDIB)
-		return;
-
-	if (img->texture == -1) {
+	if (img->texture == (GLuint)-1) {
 
 		pBmp = img->piDIB->pBmp;
 		img->texWidth = 1;
@@ -1237,11 +1319,11 @@ void gles::DrawPortalTexture(Image* img, int x, int y, int w, int h, float tx, f
 		st[7] = st[5] = scaleTexH * (float)(h + y);
 	}
 
+	if (img->texture == 0 || img->texture == (GLuint)-1) return;
+
 	glEnable(GL_TEXTURE_2D);
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, img->texture);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 	glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	glVertexPointer(3, GL_FLOAT, 0, vp);
@@ -1256,10 +1338,15 @@ void gles::DrawPortalTexture(Image* img, int x, int y, int w, int h, float tx, f
 	glRotatef(angle, 0.0, 0.0, 1.0);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	glPopMatrix();
+#endif
 }
 
 
 void gles::TexCombineShift(int r, int g, int b) { // [GEC]
+#ifdef N64
+	(void)r; (void)g; (void)b;
+	glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+#else
 	float color[4] = { 0 };
 	color[0] = ((float)r / 255.0f);
 	color[1] = ((float)g / 255.0f);
@@ -1280,4 +1367,5 @@ void gles::TexCombineShift(int r, int g, int b) { // [GEC]
 	glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND0_ALPHA, GL_SRC_ALPHA);
 	glTexEnvi(GL_TEXTURE_ENV, GL_SOURCE1_ALPHA, GL_PRIMARY_COLOR);
 	glTexEnvi(GL_TEXTURE_ENV, GL_OPERAND1_ALPHA, GL_SRC_ALPHA);
+#endif
 }

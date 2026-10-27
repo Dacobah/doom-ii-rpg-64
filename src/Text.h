@@ -18,9 +18,9 @@ public:
 	static constexpr int MAX_STRING_ARGS = 50;
 	static constexpr uint8_t C_LINE = '\x80';
 	static constexpr uint8_t C_ELLIPSES = '\x85';
-	static constexpr uint8_t C_RED_ING = '¼';
-	static constexpr uint8_t C_BLUE_ING = '½';
-	static constexpr uint8_t C_GREEN_ING = '¾';
+	static constexpr uint8_t C_RED_ING = 'Â¼';
+	static constexpr uint8_t C_BLUE_ING = 'Â½';
+	static constexpr uint8_t C_GREEN_ING = 'Â¾';
 	static constexpr uint8_t C_CHECK = '\x87';
 	static constexpr uint8_t C_MINIDASH = '\x88';
 	static constexpr uint8_t C_CURSOR2 = '\x84';
@@ -31,7 +31,7 @@ public:
 	static constexpr uint8_t C_SHIELD = '\x8b';
 	static constexpr uint8_t HYPHEN = '-';
 	static constexpr uint8_t NEWLINE = '|';
-	static constexpr uint8_t HARD_SPACE = ' ';
+	static constexpr uint8_t HARD_SPACE = 'Â ';
 
 	Text* scratchBuffers[Localization::MAXBUFFERS];
 	int bufferFlags;

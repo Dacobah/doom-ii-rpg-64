@@ -260,7 +260,7 @@ bool MenuSystem::startup() {
 	btnVendingArrowDownGlow->highlightRenderMode = 0;
 	this->m_vendingButtons->AddButton(btnVendingArrowDownGlow);
 
-	IS.~InputStream();
+	IS.close();
 	return true;
 }
 
@@ -473,14 +473,14 @@ void MenuSystem::moveDir(int n) { // J2ME
 		int begY1 = 0;
 		int begY2 = 0;
 
-		for (int i = 0; i < numItems; i++) { // Ajusta la posición si es necesario
+		for (int i = 0; i < numItems; i++) { // Ajusta la posiciÃ³n si es necesario
 			if (!(this->items[i].flags & 0x8001)) {
 				endItem = i;
 			}
 		}
 
 		//printf("endItem %d\n", endItem);
-		for (int i = 0; i < numItems; i++) { // Ajusta la posición si es necesario
+		for (int i = 0; i < numItems; i++) { // Ajusta la posiciÃ³n si es necesario
 			if (!(this->items[i].flags & 0x8001)) {
 				begItem = i;
 				break;
@@ -511,7 +511,7 @@ void MenuSystem::moveDir(int n) { // J2ME
 			int y2 = 0;
 
 			if (this->selectedIndex == this->scrollIndex) {
-				for (int i = 0; i < this->selectedIndex; i++) { // Ajusta la posición si es necesario
+				for (int i = 0; i < this->selectedIndex; i++) { // Ajusta la posiciÃ³n si es necesario
 					if (!(this->items[i].flags & 0x8000)) {
 						y1 += this->getMenuItemHeight2(i);
 						y2 += iVar2;
@@ -528,7 +528,7 @@ void MenuSystem::moveDir(int n) { // J2ME
 				this->m_scrollBar->field_0x48_ = std::min(this->m_scrollBar->field_0x48_, maxScroll2);
 			}
 
-			if (this->selectedIndex == begItem) {  // Ajusta la posición si es necesario
+			if (this->selectedIndex == begItem) {  // Ajusta la posiciÃ³n si es necesario
 				this->scrollIndex = 0;
 				this->m_scrollBar->field_0x44_ -= begY1;
 				this->m_scrollBar->field_0x48_ -= begY2;
@@ -3572,10 +3572,14 @@ void MenuSystem::startGame(bool b) {
 	Applet* app = CAppContainer::getInstance()->app;
 
 	if (this->background != this->imgMainBG) {
-		this->background->~Image();
+		if (this->background) {
+			this->background->~Image();
+		}
 	}
 
-	this->imgMainBG->~Image();
+	if (this->imgMainBG) {
+		this->imgMainBG->~Image();
+	}
 
 	this->background = nullptr;
 	this->imgMainBG = nullptr;
@@ -4839,7 +4843,7 @@ void MenuSystem::handleUserMoved(int x, int y) {
 			return;
 		}
 
-		// [GEC] Hasta que este fuera del limite del rectangulo, permitirá el desplasamiento de los items del menu
+		// [GEC] Hasta que este fuera del limite del rectangulo, permitirÃ¡ el desplasamiento de los items del menu
 		const int begMouseX = (int)(gBegMouseX * Applet::IOS_WIDTH);
 		const int begMouseY = (int)(gBegMouseY * Applet::IOS_HEIGHT);
 		if (pointInRectangle(x, y, begMouseX - 3, begMouseY - 3, 6, 6)) {

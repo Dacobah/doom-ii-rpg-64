@@ -565,6 +565,7 @@ public:
 	
 
 	void loadMiniGameImages();
+	void freeMiniGameImages();
 	void playIntroMovie(Graphics* graphics);
 	void exitIntroMovie(bool b);
 
