@@ -110,10 +110,23 @@ void gles::SetGLState() {
 	glEnableClientState(GL_VERTEX_ARRAY);
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 	glDisableClientState(GL_COLOR_ARRAY);
+#ifdef N64
+	Applet* app = CAppContainer::getInstance()->app;
+	if (app && app->canvas && app->canvas->loadMapID == 3 && this->fogEnd > this->fogStart + 50.0f) {
+		glFogf(GL_FOG_MODE, GL_LINEAR);
+		glFogfv(GL_FOG_COLOR, this->fogColor);
+		glFogf(GL_FOG_START, this->fogStart);
+		glFogf(GL_FOG_END, this->fogEnd);
+		glEnable(GL_FOG);
+	} else {
+		glDisable(GL_FOG);
+	}
+#else
 	glFogf(GL_FOG_MODE, GL_LINEAR);
 	glFogfv(GL_FOG_COLOR, this->fogColor);
 	glFogf(GL_FOG_START, this->fogStart);
 	glFogf(GL_FOG_END, this->fogEnd);
+#endif
 	this->fogMode = 0;
 	glEnable(GL_BLEND);
 	glCullFace(GL_BACK);
@@ -204,6 +217,13 @@ void gles::BeginFrame(int x, int y, int w, int h, int* mtxView, int* mtxProjecti
 		this->fogColor[3] = 1.0f;
 	}
 
+#ifdef N64
+	float fStart = (float)this->tinyGL->fogMin;
+	float fRange = (this->fogColor[3] > 0.001f) ? ((float)this->tinyGL->fogRange / this->fogColor[3]) : (float)this->tinyGL->fogRange;
+	if (fRange < 100.0f) fRange = 1000.0f;
+	this->fogStart = fStart;
+	this->fogEnd = fStart + fRange;
+#else
 	this->fogStart = ((float)this->tinyGL->fogMin) * this->fogScale;
 	this->fogEnd = ((((float)this->tinyGL->fogRange) / this->fogColor[3]) + (float)this->tinyGL->fogMin) * this->fogScale;
 
@@ -211,6 +231,7 @@ void gles::BeginFrame(int x, int y, int w, int h, int* mtxView, int* mtxProjecti
 		this->fogStart = 9999.f;
 		this->fogEnd = 10000.f;
 	}
+#endif
 
 	this->fogBlack[0] = 0.0;
 	this->fogBlack[1] = 0.0;
@@ -707,7 +728,11 @@ void gles::SetupTexture(int n, int n2, int renderMode, int flags) {
 				break;
 			}
 			case Render::RENDER_SUB: {
+#ifdef N64
+				glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA);
+#else
 				glBlendFunc(GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
+#endif
 				glColor4f(1.0f, 1.0f, 1.0f, 1.0f);
 				this->fogMode = 0;
 				break;

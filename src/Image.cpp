@@ -14,7 +14,7 @@
 static Image* s_lruHead = nullptr;
 static Image* s_lruTail = nullptr;
 static uint32_t s_total2DGlBytes = 0;
-static constexpr uint32_t MAX_2D_GL_BYTES = 512 * 1024; // 512 KB 2D GL LRU cache
+static constexpr uint32_t MAX_2D_GL_BYTES = 256 * 1024; // 256 KB 2D GL LRU cache
 static uint16_t s_tileBuf[2048]; // 4 KB TMEM-sized conversion scratch buffer
 
 static void UnlinkImageLRU(Image* img) {

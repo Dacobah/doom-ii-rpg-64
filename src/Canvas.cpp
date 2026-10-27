@@ -3077,6 +3077,13 @@ bool Canvas::loadMedia() {
 	bool displaySoftKeys = this->displaySoftKeys;
 	this->updateLoadingBar(false);
 	this->unloadMedia();
+#ifdef N64
+	this->disposeCharacterSelection();
+	this->disposeTravelMap();
+	if (app->menuSystem) {
+		app->menuSystem->freeMainMenuImages();
+	}
+#endif
 	this->displaySoftKeys = false;
 	this->isZoomedIn = false;
 	app->StopAccelerometer();

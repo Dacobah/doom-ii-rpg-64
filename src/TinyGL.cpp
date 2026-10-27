@@ -161,7 +161,7 @@ void TinyGL::setViewport(int x, int y, int w, int h) {
 	}
 
 	uint16_t* backBuff = (uint16_t*)app->backBuffer->pBmp;
-	this->pixels = backBuff + (this->screenWidth * 3) + app->canvas->viewRect[0];
+	this->pixels = backBuff ? (backBuff + (this->screenWidth * 3) + app->canvas->viewRect[0]) : nullptr;
 
 	this->_setViewport(posX + 1, posY + 1, w - 2, h - 2);
 

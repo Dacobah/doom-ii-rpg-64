@@ -72,8 +72,12 @@ bool Applet::startup() {
 	this->field_0x428 = 0;
 
 	this->backBuffer = new IDIB;
+#ifdef N64
+	this->backBuffer->pBmp = nullptr;
+#else
 	this->backBuffer->pBmp =  new uint8_t[480 * 320 *2];
 	std::memset(this->backBuffer->pBmp, 0, 480 * 320 * 2);
+#endif
 	this->backBuffer->pRGB888 = nullptr;
 	this->backBuffer->pRGB565 = nullptr;
 	this->backBuffer->width = CAppContainer::getInstance()->sdlGL->vidWidth;
