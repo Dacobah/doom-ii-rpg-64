@@ -1,4 +1,8 @@
 #include <stdexcept>
+#include <malloc.h>
+#ifdef N64
+#include <libdragon.h>
+#endif
 
 #include "CAppContainer.h"
 #include "App.h"
@@ -235,26 +239,37 @@ void Render::unloadMap() {
 	if (this->mediaTexelSizes2) { delete this->mediaTexelSizes2; }
 	this->mediaTexelSizes2 = nullptr;
 
+	if (this->mediaTexelLocations) {
+		delete[] this->mediaTexelLocations;
+		this->mediaTexelLocations = nullptr;
+	}
+
 	if (this->mediaTexels) {
 		for (int i = 0; i < 1024; i++) {
-			if (this->mediaTexels[i]) { delete this->mediaTexels[i]; }
+			if (this->mediaTexels[i]) { delete[] this->mediaTexels[i]; }
 			this->mediaTexels[i] = nullptr;
 		}
-		delete this->mediaTexels;
+		delete[] this->mediaTexels;
 	}
 	this->mediaTexels = nullptr;
 
 	if (this->mediaPalettes) {
 		for (int i = 0; i < 1024; i++) {
-			for (int j = 0; j < 16; j++) {
-				if (this->mediaPalettes[i][j]) { delete this->mediaPalettes[i][j]; }
-				this->mediaPalettes[i][j] = nullptr;
+			if (this->mediaPalettes[i] && this->mediaPalettes[i][0]) {
+				delete[] this->mediaPalettes[i][0];
+				this->mediaPalettes[i][0] = nullptr;
 			}
-			delete this->mediaPalettes[i];
-			this->mediaPalettes[i] = nullptr;
 		}
-		
-		delete this->mediaPalettes;
+		if (this->mediaPalettesFlat) {
+			delete[] this->mediaPalettesFlat;
+			this->mediaPalettesFlat = nullptr;
+		}
+		else {
+			for (int i = 0; i < 1024; i++) {
+				if (this->mediaPalettes[i]) { delete[] this->mediaPalettes[i]; }
+			}
+		}
+		delete[] this->mediaPalettes;
 	}
 	this->mediaPalettes = nullptr;
 	
@@ -358,10 +373,63 @@ void Render::RegisterMedia(int n) {
 	}
 }
 
+uint8_t* Render::GetTexelData(int texelIdx) {
+	if (texelIdx < 0 || texelIdx >= 1024) return nullptr;
+	if (this->mediaTexels && this->mediaTexels[texelIdx]) {
+		return this->mediaTexels[texelIdx];
+	}
+	if (!this->mediaTexelLocations) return nullptr;
+
+	const TexelLocation& loc = this->mediaTexelLocations[texelIdx];
+	if (loc.size == 0 || loc.fileIdx >= 39) return nullptr;
+
+	static uint8_t s_texelBuffer[65536];
+	if (loc.size > sizeof(s_texelBuffer)) {
+#ifdef N64
+		debugf("[GetTexelData] ERROR: size %lu > buffer %zu\n", (unsigned long)loc.size, sizeof(s_texelBuffer));
+#endif
+		return nullptr;
+	}
+
+#ifdef N64
+	char path[64];
+	snprintf(path, sizeof(path), "Packages/%s", Resources::RES_NEWTEXEL_FILE_ARRAY[loc.fileIdx]);
+	int handle = dfs_open(path);
+	if (handle < 0) {
+		snprintf(path, sizeof(path), "/Packages/%s", Resources::RES_NEWTEXEL_FILE_ARRAY[loc.fileIdx]);
+		handle = dfs_open(path);
+	}
+	if (handle < 0) {
+		debugf("[GetTexelData] ERROR: failed to open %s\n", path);
+		return nullptr;
+	}
+	dfs_seek(handle, loc.fileOffset, SEEK_SET);
+	int readBytes = dfs_read(s_texelBuffer, 1, loc.size, handle);
+	dfs_close(handle);
+	if (readBytes != (int)loc.size) {
+		debugf("[GetTexelData] ERROR: read %d expected %lu\n", readBytes, (unsigned long)loc.size);
+		return nullptr;
+	}
+#else
+	InputStream IS;
+	if (!IS.loadFile(Resources::RES_NEWTEXEL_FILE_ARRAY[loc.fileIdx], InputStream::LOADTYPE_RESOURCE)) {
+		return nullptr;
+	}
+	IS.offsetCursor(loc.fileOffset);
+	IS.read(s_texelBuffer, 0, loc.size);
+	IS.close();
+#endif
+
+	return s_texelBuffer;
+}
+
 void Render::FinalizeMedia() {
 	Applet* app = CAppContainer::getInstance()->app;
 	InputStream IS;
 
+#ifdef N64
+	debugf("[FinalizeMedia] start: free_heap=%d\n", mallinfo().fordblks);
+#endif
 	app->canvas->updateLoadingBar(false);
 	this->texelMemoryUsage = 0;
 	this->paletteMemoryUsage = 0;
@@ -374,19 +442,36 @@ void Render::FinalizeMedia() {
 
 		if (b) {
 			int n3 = (this->mediaTexelSizes[i] & 0x3FFFFFFF) + 1;
+#ifdef N64
+			if (n3 > 100000 || n3 <= 0) {
+				debugf("[FinalizeMedia] texel[%d] size=%d\n", n2, n3);
+			}
+#endif
 			this->texelMemoryUsage += n3;
 			this->mediaTexelSizes2[n2] = n3;
-			this->mediaTexels[n2] = new uint8_t[n3];
+			if (this->mediaTexels) {
+				this->mediaTexels[n2] = new uint8_t[n3];
+			}
 			n2++;
 		}
 		if (b2) {
 			int n4 = this->mediaPalColors[i] & 0x3FFFFFFF;
+#ifdef N64
+			if (n4 > 50000 || n4 <= 0) {
+				debugf("[FinalizeMedia] palette[%d] size=%d\n", n, n4);
+			}
+#endif
 			this->paletteMemoryUsage += 4 * n4;
 			this->mediaPalettesSizes[n] = n4;
 			this->mediaPalettes[n][0] = new uint16_t[n4];
 			n++;
 		}
 	}
+
+#ifdef N64
+	debugf("[FinalizeMedia] registered: texels=%d (%d bytes), palettes=%d (%d bytes), free_heap=%d\n",
+	       n2, this->texelMemoryUsage, n, this->paletteMemoryUsage, mallinfo().fordblks);
+#endif
 
 	app->canvas->updateLoadingBar(false);
 
@@ -451,47 +536,42 @@ void Render::FinalizeMedia() {
 		bool b6 = (this->mediaTexelSizes[n13] & Render::MEDIA_FLAG_REFERENCE) != 0x0;
 		int n14 = (this->mediaTexelSizes[n13] & 0x3FFFFFFF) + 1;
 		if (b5 && !b6) {
-			if (m != n10) {
-				IS.close();
-				/*String str = "/tex0";
-				if (m >= 10) {
-					str = "/tex";
-				}
-				resourceAsStream2 = App.getResourceAsStream(str + m + ".bin");*/
-				if (!IS.loadFile(Resources::RES_NEWTEXEL_FILE_ARRAY[m], InputStream::LOADTYPE_RESOURCE)) {
-					app->Error("getResource(%s) failed\n", Resources::RES_NEWTEXEL_FILE_ARRAY[m]);
-				}
-				
-				n10 = m;
-				n11 = 0;
-				//Canvas.updateLoadingBar(false);
+			if (this->mediaTexelLocations) {
+				this->mediaTexelLocations[n9].fileIdx = (uint8_t)m;
+				this->mediaTexelLocations[n9].fileOffset = (uint32_t)n12;
+				this->mediaTexelLocations[n9].size = (uint32_t)n14;
 			}
+			else if (this->mediaTexels) {
+				if (m != n10) {
+					IS.close();
+					if (!IS.loadFile(Resources::RES_NEWTEXEL_FILE_ARRAY[m], InputStream::LOADTYPE_RESOURCE)) {
+						app->Error("getResource(%s) failed\n", Resources::RES_NEWTEXEL_FILE_ARRAY[m]);
+					}
+					n10 = m;
+					n11 = 0;
+				}
 
-			if (n11 != n12) {
-				app->resource->bufSkip(&IS, n12 - n11, true);
+				if (n11 != n12) {
+					app->resource->bufSkip(&IS, n12 - n11, true);
+				}
+				app->resource->readByteArray(&IS, this->mediaTexels[n9], 0, n14);
+				app->resource->readMarker(&IS, n12);
 			}
-			//printf("n14 %d\n", n14);
-			app->resource->readByteArray(&IS, this->mediaTexels[n9], 0, n14);
 
 			// [GEC]: Verifica los datos del sprite de agua animada
-			{
-				if (n13 == 814) {
-					if (checkFileMD5Hash(this->mediaTexels[n9], n14, 0x2AFCC8EDC9EA8610, 0xEA5458CBEBF345EC)) {
+			if (n13 >= 814 && n13 <= 817) {
+				uint8_t* waterBuf = this->mediaTexels ? this->mediaTexels[n9] : this->GetTexelData(n9);
+				if (waterBuf) {
+					if (n13 == 814 && checkFileMD5Hash(waterBuf, n14, 0x2AFCC8EDC9EA8610, 0xEA5458CBEBF345EC)) {
 						this->fixWaterAnim1 = true;
 					}
-				}
-				else if (n13 == 815) {
-					if (checkFileMD5Hash(this->mediaTexels[n9], n14, 0x14F8BC466131E9AB, 0xFBEC94B21422E569)) {
+					else if (n13 == 815 && checkFileMD5Hash(waterBuf, n14, 0x14F8BC466131E9AB, 0xFBEC94B21422E569)) {
 						this->fixWaterAnim2 = true;
 					}
-				}
-				else if (n13 == 816) {
-					if (checkFileMD5Hash(this->mediaTexels[n9], n14, 0xB784065E177D596E, 0x23729441F971FEE7)) {
+					else if (n13 == 816 && checkFileMD5Hash(waterBuf, n14, 0xB784065E177D596E, 0x23729441F971FEE7)) {
 						this->fixWaterAnim3 = true;
 					}
-				}
-				else if (n13 == 817) {
-					if (checkFileMD5Hash(this->mediaTexels[n9], n14, 0x8A53E5E7CD062F73, 0xFAA5B42239006DC8)) {
+					else if (n13 == 817 && checkFileMD5Hash(waterBuf, n14, 0x8A53E5E7CD062F73, 0xFAA5B42239006DC8)) {
 						this->fixWaterAnim4 = true;
 					}
 				}
@@ -507,7 +587,6 @@ void Render::FinalizeMedia() {
 			//printf("n9 %d\n", n9);
 			//printf("this->mediaTexelSizes[%d] %d\n", n13, this->mediaTexelSizes[n13]);
 			++n9;
-			app->resource->readMarker(&IS, n12);
 			n12 = (n11 = n12 + (n14 + sizeof(uint32_t)));
 		}
 		else if (!b6) {
@@ -532,6 +611,9 @@ bool Render::beginLoadMap(int mapNameID) {
 	Applet* app = CAppContainer::getInstance()->app;
 	InputStream IS;
 
+#ifdef N64
+	debugf("[beginLoadMap] start: map=%d, free_heap=%d\n", mapNameID, mallinfo().fordblks);
+#endif
 	this->mapNameID = mapNameID;
 	app->canvas->loadMapStringID = (short)(4 + (this->mapNameID - 1));
 	app->localization->loadText(app->canvas->loadMapStringID);
@@ -556,6 +638,9 @@ bool Render::beginLoadMap(int mapNameID) {
 	this->portalScripted = false;
 	this->mapNameField = (0xC00 | app->game->levelNames[this->mapNameID - 1]);
 
+#ifdef N64
+	debugf("[beginLoadMap] allocating media tables, free_heap=%d\n", mallinfo().fordblks);
+#endif
 	this->mediaMappings = new short[Render::MEDIA_MAX_MAPPINGS];
 	this->mediaDimensions = new uint8_t[Render::MEDIA_MAX_IMAGES];
 	this->mediaBounds = new short[(Render::MEDIA_MAX_IMAGES * 4)];
@@ -563,14 +648,16 @@ bool Render::beginLoadMap(int mapNameID) {
 	this->mediaPalettesSizes = new int[Render::MEDIA_MAX_IMAGES];
 	this->mediaTexelSizes = new int[Render::MEDIA_MAX_IMAGES];
 	this->mediaTexelSizes2 = new int[Render::MEDIA_MAX_IMAGES];
-	this->mediaTexels = new uint8_t*[1024]();
+	this->mediaTexelLocations = new TexelLocation[Render::MEDIA_MAX_IMAGES]();
+	this->mediaTexels = nullptr;
 	this->mediaPalettes = new uint16_t **[1024]();
+	this->mediaPalettesFlat = new uint16_t *[1024 * 16]();
 	for (int i = 0; i < 1024; ++i) {
-		this->mediaPalettes[i] = new uint16_t *[16]();
-		for (int j = 0; j < 16; ++j) {
-			this->mediaPalettes[i][j] = nullptr;
-		}
+		this->mediaPalettes[i] = &this->mediaPalettesFlat[i * 16];
 	}
+#ifdef N64
+	debugf("[beginLoadMap] media tables allocated, free_heap=%d\n", mallinfo().fordblks);
+#endif
 
 	app->canvas->updateLoadingBar(false);
 	IS.loadResource(Resources::RES_NEWMAPPINGS_BIN_GZ);
@@ -632,9 +719,19 @@ bool Render::beginLoadMap(int mapNameID) {
 	}
 	app->resource->readMarker(&IS, 0xDEADBEEF);
 	IS.close();
+#ifdef N64
+	debugf("[beginLoadMap] calling FinalizeMedia, free_heap=%d\n", mallinfo().fordblks);
+#endif
 	this->FinalizeMedia();
+#ifdef N64
+	debugf("[beginLoadMap] FinalizeMedia done, free_heap=%d\n", mallinfo().fordblks);
+#endif
 
 	//-----------------------------
+#ifdef N64
+	debugf("[beginLoadMap] allocating nodes (numNodes=%d, dataSizePolys=%d), free_heap=%d\n",
+	       this->numNodes, dataSizePolys, mallinfo().fordblks);
+#endif
 	this->nodeNormalIdxs = new uint8_t[this->numNodes];
 	this->nodeOffsets = new short[this->numNodes];
 	this->nodeChildOffset1 = new short[this->numNodes];
@@ -2564,7 +2661,7 @@ void Render::setupTexture(int n, int n2, int renderMode, int renderFlags) {
 
 	}
 	else {
-		app->tinyGL->textureBase = this->mediaTexels[this->mediaTexelSizes[n4] & 0x3FFF];
+		app->tinyGL->textureBase = this->mediaTexels ? this->mediaTexels[this->mediaTexelSizes[n4] & 0x3FFF] : nullptr;
 		app->tinyGL->paletteBase = this->mediaPalettes[this->mediaPalColors[n4] & 0x3FFF];
 		app->tinyGL->textureBaseSize = this->mediaTexelSizes2[this->mediaTexelSizes[n4] & 0x3FFF]; // [GEC] new
 		app->tinyGL->paletteBaseSize = this->mediaPalettesSizes[this->mediaPalColors[n4] & 0x3FFF]; // [GEC] new

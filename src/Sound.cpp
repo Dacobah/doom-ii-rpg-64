@@ -60,7 +60,7 @@ bool Sound::startup() {
 void Sound::openAL_Init() {
 #ifdef N64
 	audio_init(44100, 4);
-	mixer_init(16);
+	mixer_init(20);
 	for (int i = 0; i < 10; i++) {
 		this->channel[i].bufferId = i;
 		this->channel[i].sourceId = i;
@@ -103,7 +103,7 @@ void Sound::openAL_Close() {
 #ifdef N64
 	for (int i = 0; i < 10; i++) {
 		if (n64_channel_loaded[i]) {
-			mixer_ch_stop(i);
+			mixer_ch_stop(i * 2);
 			wav64_close(&n64_channel_wav[i]);
 			n64_channel_loaded[i] = false;
 		}
@@ -142,7 +142,7 @@ void Sound::openAL_SetVolume(ALuint source, int volume) {
 #ifdef N64
 	if (source < 10) {
 		float v = (float)volume / 100.0f;
-		mixer_ch_set_vol(source, v, v);
+		mixer_ch_set_vol(source * 2, v, v);
 	}
 #else
 	alSourcef(source, AL_MAX_GAIN, (float)volume / 100.0);
@@ -166,7 +166,7 @@ void Sound::openAL_Resume() {
 bool Sound::openAL_IsPlaying(ALuint source) {
 #ifdef N64
 	if (source < 10) {
-		return mixer_ch_playing(source);
+		return mixer_ch_playing(source * 2);
 	}
 	return false;
 #else
@@ -213,8 +213,9 @@ bool Sound::openAL_GetALFormat(AudioStreamBasicDescription aStreamBD, ALenum* fo
 void Sound::openAL_PlaySound(ALuint source, ALint loop) {
 #ifdef N64
 	if (source < 10 && n64_channel_loaded[source]) {
+		int mixer_ch = source * 2;
 		wav64_set_loop(&n64_channel_wav[source], loop != 0);
-		wav64_play(&n64_channel_wav[source], source);
+		wav64_play(&n64_channel_wav[source], mixer_ch);
 	}
 #else
 	ALenum error;
@@ -229,8 +230,9 @@ void Sound::openAL_LoadSound(int resID, Sound::SoundStream* channel) {
 #ifdef N64
 	int ch = channel->sourceId;
 	if (ch >= 0 && ch < 10) {
+		int mixer_ch = ch * 2;
 		if (n64_channel_loaded[ch]) {
-			mixer_ch_stop(ch);
+			mixer_ch_stop(mixer_ch);
 			wav64_close(&n64_channel_wav[ch]);
 			n64_channel_loaded[ch] = false;
 		}
@@ -478,7 +480,13 @@ void Sound::playSound(int16_t resID, uint8_t flags, int priority, bool a5) {
 			if ((flags & 2) != 0)
 			{
 				for (v17 = 0; v17 < 10; v17++) {
+#ifdef N64
+					if (n64_channel_loaded[v17]) {
+						mixer_ch_stop(v17 * 2);
+					}
+#else
 					alSourceStop(this->channel[v17].sourceId);
+#endif
 					this->channel[v17].priority = 1;
 					this->channel[v17].fadeInProgress = 0;
 				}
@@ -496,7 +504,13 @@ void Sound::playSound(int16_t resID, uint8_t flags, int priority, bool a5) {
 				channel = &this->channel[FreeSlot];
 				channel->resID = resID;
 				channel->priority = priority;
+#ifdef N64
+				if (n64_channel_loaded[FreeSlot]) {
+					mixer_ch_stop(FreeSlot * 2);
+				}
+#else
 				alSourceStop(channel->sourceId);
+#endif
 				alSourcei(channel->sourceId, AL_BUFFER, NULL);
 				this->openAL_LoadSound(v5, &this->channel[FreeSlot]);
 				alSourcei(channel->sourceId, AL_BUFFER, channel->bufferId);
@@ -557,7 +571,7 @@ void Sound::soundStop() {
 	for (int i = 0; i < 10; i++) {
 #ifdef N64
 		if (n64_channel_loaded[i]) {
-			mixer_ch_stop(i);
+			mixer_ch_stop(i * 2);
 		}
 #else
 		alSourceStop(this->channel[i].sourceId);
@@ -584,7 +598,7 @@ void Sound::stopSound(int resID, bool fadeOut) {
 			else {
 #ifdef N64
 				if (n64_channel_loaded[i]) {
-					mixer_ch_stop(i);
+					mixer_ch_stop(i * 2);
 				}
 #else
 				alSourceStop(this->channel[i].sourceId);

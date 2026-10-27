@@ -1,6 +1,7 @@
 #include <stdexcept>
 #include <assert.h>
 #include <algorithm>
+#include <malloc.h>
 
 #include "SDLGL.h"
 #include "App.h"
@@ -3054,6 +3055,9 @@ void Canvas::runInputEvents() {
 
 bool Canvas::loadMedia() {
 	Applet* app = CAppContainer::getInstance()->app;
+#ifdef N64
+	debugf("[loadMedia] start, free_heap=%d\n", mallinfo().fordblks);
+#endif
 	printf("Canvas::loadMedia\n");
 
 	//printf("Canvas::isLoaded %d\n", Canvas::isLoaded);
@@ -3084,9 +3088,15 @@ bool Canvas::loadMedia() {
 		}
 	}
 
+#ifdef N64
+	debugf("[loadMedia] calling beginLoadMap(%d), free_heap=%d\n", this->loadMapID, mallinfo().fordblks);
+#endif
 	if (!app->render->beginLoadMap(this->loadMapID)) {
 		return false;
 	}
+#ifdef N64
+	debugf("[loadMedia] beginLoadMap done, free_heap=%d\n", mallinfo().fordblks);
+#endif
 
 	if (this->loadMapID <= 10 && this->loadMapID > app->player->highestMap) {
 		app->player->highestMap = this->loadMapID;

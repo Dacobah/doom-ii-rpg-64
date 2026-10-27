@@ -881,7 +881,9 @@ void gles::CreateTextureForMediaID(int n, int mediaID, bool b) {
 	else
 	{
 		v7 = render->mediaTexelSizes[mediaID] & 0x3FFF;
-		__src = render->mediaTexels[v7];
+		__src = render->GetTexelData(v7);
+		if (!__src)
+			return;
 		Size = render->mediaTexelSizes2[v7];
 		v9 = render->mediaPalettes[render->mediaPalColors[mediaID] & 0x3FFF][0];
 		v12 = render->mediaDimensions[mediaID];
@@ -929,10 +931,15 @@ void gles::CreateTextureForMediaID(int n, int mediaID, bool b) {
 		v15++;
 	} while (v15 < 256);
 	__len = height * width;
+#ifdef N64
+	static char s_texelDecodeBuf[256 * 256 + 512];
+	data = s_texelDecodeBuf;
+#else
 	data = (char*)malloc(height * width + 512);
+#endif
 	__b = data + 512;
 	v23 = this->render;
-	v79 = render->mediaTexels[v7];
+	v79 = __src;
 	bool sprite = false;
 	if ((v5 == mediaID) || (Size == __len))
 	{
@@ -1184,7 +1191,9 @@ void gles::CreateTextureForMediaID(int n, int mediaID, bool b) {
 
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, v70 ? GL_LINEAR : GL_NEAREST);
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, v70 ? GL_LINEAR : GL_NEAREST);
+#ifndef N64
 	std::free(data);
+#endif
 }
 
 bool gles::DrawSkyMap() {

@@ -24,7 +24,51 @@
 
 #ifdef N64
 #include <libdragon.h>
+#include <new>
+#include <malloc.h>
 extern "C" void __debug_init_cpp(void) {}
+
+void* operator new(size_t size) {
+    void* p = malloc(size);
+    if (!p) {
+        struct mallinfo minf = mallinfo();
+        debugf("!!! [BAD_ALLOC] operator new(%lu) failed! heap free=%d used=%d !!!\n",
+               (unsigned long)size, minf.fordblks, minf.uordblks);
+        printf("!!! [BAD_ALLOC] operator new(%lu) failed! heap free=%d used=%d !!!\n",
+               (unsigned long)size, minf.fordblks, minf.uordblks);
+        abort();
+    }
+    return p;
+}
+
+void* operator new[](size_t size) {
+    void* p = malloc(size);
+    if (!p) {
+        struct mallinfo minf = mallinfo();
+        debugf("!!! [BAD_ALLOC] operator new[](%lu) failed! heap free=%d used=%d !!!\n",
+               (unsigned long)size, minf.fordblks, minf.uordblks);
+        printf("!!! [BAD_ALLOC] operator new[](%lu) failed! heap free=%d used=%d !!!\n",
+               (unsigned long)size, minf.fordblks, minf.uordblks);
+        abort();
+    }
+    return p;
+}
+
+void operator delete(void* p) noexcept {
+    if (p) free(p);
+}
+
+void operator delete[](void* p) noexcept {
+    if (p) free(p);
+}
+
+void operator delete(void* p, size_t) noexcept {
+    if (p) free(p);
+}
+
+void operator delete[](void* p, size_t) noexcept {
+    if (p) free(p);
+}
 #endif
 
 void drawView(SDLGL* sdlGL);

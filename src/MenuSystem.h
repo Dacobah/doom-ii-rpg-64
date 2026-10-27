@@ -270,6 +270,7 @@ public:
     void infiniteLoop();
     int infiniteRecursion(int* array);
     void systemTest(int sysType);
+    void freeMainMenuImages();
     void startGame(bool b);
     void SetYESNO(short i, int i2, int i3, int i4);
     void SetYESNO(short i, int i2, int i3, int i4, int i5, int i6);

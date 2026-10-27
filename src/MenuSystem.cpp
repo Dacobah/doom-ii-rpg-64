@@ -3568,8 +3568,30 @@ void MenuSystem::systemTest(int sysType) {
 	}
 }
 
+void MenuSystem::freeMainMenuImages() {
+#define SAFE_FREE_MENU_IMG(img) if (img) { (img)->~Image(); img = nullptr; }
+	SAFE_FREE_MENU_IMG(this->imgMenuDial);
+	SAFE_FREE_MENU_IMG(this->imgMenuDialKnob);
+	SAFE_FREE_MENU_IMG(this->imgMenuMainBOX);
+	SAFE_FREE_MENU_IMG(this->imgMainMenuOverLay);
+	SAFE_FREE_MENU_IMG(this->imgMainHelpOverLay);
+	SAFE_FREE_MENU_IMG(this->imgMainAboutOverLay);
+	SAFE_FREE_MENU_IMG(this->imgMenuYesNoBOX);
+	SAFE_FREE_MENU_IMG(this->imgMenuChooseDIFFBOX);
+	SAFE_FREE_MENU_IMG(this->imgMenuLanguageBOX);
+	SAFE_FREE_MENU_IMG(this->imgSwitchLeftNormal);
+	SAFE_FREE_MENU_IMG(this->imgSwitchLeftActive);
+	SAFE_FREE_MENU_IMG(this->imgMainMenuDialA_Anim);
+	SAFE_FREE_MENU_IMG(this->imgMainMenuDialC_Anim);
+	SAFE_FREE_MENU_IMG(this->imgMainMenuSlide_Anim);
+	SAFE_FREE_MENU_IMG(this->imgLogo);
+#undef SAFE_FREE_MENU_IMG
+}
+
 void MenuSystem::startGame(bool b) {
 	Applet* app = CAppContainer::getInstance()->app;
+
+	this->freeMainMenuImages();
 
 	if (this->background != this->imgMainBG) {
 		if (this->background) {

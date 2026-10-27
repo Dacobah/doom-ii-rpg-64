@@ -99,6 +99,12 @@ public:
 	static constexpr int MEDIA_MAX_MAPPINGS = 512;
 	static constexpr int MEDIA_MAX_IMAGES = 1024;
 	static constexpr int MEDIA_MAX_IMAGES_MASK = 1023;
+
+	struct TexelLocation {
+		uint8_t fileIdx;
+		uint32_t fileOffset;
+		uint32_t size;
+	};
 	static constexpr int SKY_MAP_WIDTH = 128;
 	static constexpr int SKY_MAP_HEIGHT = 128;
 	static constexpr int SKY_MAP_SMASK = 127;
@@ -271,8 +277,10 @@ public:
 	uint8_t* mediaDimensions;
 	short* mediaBounds;
 	uint8_t** mediaTexels;
+	TexelLocation* mediaTexelLocations;
 	int* mediaTexelSizes2;
 	uint16_t*** mediaPalettes;
+	uint16_t** mediaPalettesFlat;
 	int* mediaPalettesSizes;
 	int fogTableColor;
 	int fogTableFrac;
@@ -365,6 +373,7 @@ public:
 	void setupPalette(uint16_t* spanPalette, int renderMode, int renderFlags);
 	int(*getImageFrameBounds(int n, int n2, int n3, int n4))[4];
 	uint16_t* getPalette(int n, int n2, int n3);
+	uint8_t* GetTexelData(int texelIdx);
 	void setupTexture(int n, int n2, int renderMode, int renderFlags);
 	void drawSkyMap(int n2);
 	void render(int viewX, int viewY, int viewZ, int viewAngle, int viewPitch, int viewRoll, int viewFov);

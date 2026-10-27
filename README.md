@@ -51,6 +51,9 @@ Le script extrait automatiquement les 544 fichiers requis du package vers `files
 - [x] **Étape 4 : Rendu vidéo & Framebuffer N64** (affichage 320×240, letterbox 320×213 au ratio 3:2 natif, hook d'affichage `display_get()` / `rdpq` / `gl_context`)
 - [x] **Étape 5 : Gestion des contrôles N64** (D-Pad, Stick analogique, A, B, Z, R, C-Buttons, Rumble Pak)
 - [x] **Étape 6 : Audio Libdragon** (mixer matériel RSP 16 canaux, audio 44.1 kHz, compression VADPCM WAV64)
+- [x] **Gestion des canaux Stéréo Libdragon Mixer (32 canaux max)** :
+  - Chaque flux audio logique (`SoundStream channel[10]`) est désormais mappé sur une paire dédiée de canaux physiques Libdragon (`canal = index * 2`, 20 canaux initialisés via `mixer_init(20)`).
+  - Évite les collisions et l'assertion `mixer_ch_set_vol: cannot call on secondary stereo channel` lorsqu'un son mono (navigation de menu, tir) est joué pendant la lecture d'une piste stéréo (musique de titre, etc.).
 - [x] **Corrections Bas-Niveau MIPS/GCC 14 & OpenGL Libdragon** :
   - Endianness Big-Endian dans les flux binaires et couleurs de brouillard (`JavaStream.cpp`, `GLES.cpp`)
   - Flags GCC 14 (`-fno-lifetime-dse`, `-fno-delete-null-pointer-checks`) indispensables pour le code C++ décompilé appelant manuellement des destructeurs (`IS.~InputStream()`, `nullptr->~Image()`) sans double-free
