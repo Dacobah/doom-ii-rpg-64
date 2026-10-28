@@ -381,7 +381,16 @@ uint8_t* Render::GetTexelData(int texelIdx) {
 	if (!this->mediaTexelLocations) return nullptr;
 
 	const TexelLocation& loc = this->mediaTexelLocations[texelIdx];
-	if (loc.size == 0 || loc.fileIdx >= 39) return nullptr;
+	if (loc.size == 0 || loc.fileIdx >= 39) {
+#ifdef N64
+		static int s_errZeroCount = 0;
+		if (s_errZeroCount < 5) {
+			debugf("[GetTexelData] ERROR: texelIdx=%d has size=%lu fileIdx=%d\n", texelIdx, (unsigned long)loc.size, loc.fileIdx);
+			s_errZeroCount++;
+		}
+#endif
+		return nullptr;
+	}
 
 	static uint8_t s_texelBuffer[65536];
 	if (loc.size > sizeof(s_texelBuffer)) {
@@ -1091,6 +1100,14 @@ void Render::renderSprite(int x, int y, int z, int tileNum, int frame, int flags
 				else {
 					this->setupPalette(app->tinyGL->getFogPalette(transform3DVerts[0].z << 16), renderMode, renderFlags);
 				}
+#ifdef N64
+				static int s_spriteDrawLog = 0;
+				if (s_spriteDrawLog < 5) {
+					debugf("[renderSprite %d] tile=%d frame=%d mv0=(%d,%d,%d)\n",
+					       s_spriteDrawLog, tileNum, frame, app->tinyGL->mv[0].x, app->tinyGL->mv[0].y, app->tinyGL->mv[0].z);
+					s_spriteDrawLog++;
+				}
+#endif
 				if (!this->_gles->DrawWorldSpaceSpriteLine(&app->tinyGL->mv[0], &app->tinyGL->mv[1], &app->tinyGL->mv[2], flags)) {
 					app->tinyGL->drawClippedSpriteLine(&transform3DVerts[1], &transform3DVerts[0], &transform3DVerts[2], flags, true);
 				}
@@ -2334,6 +2351,13 @@ void Render::renderBSP() {
 
 	this->bspTime = app->upTimeMs - this->bspTime;
 	app->tinyGL->resetCounters();
+#ifdef N64
+	static int s_bspLogCount = 0;
+	if (s_bspLogCount < 3) {
+		debugf("[renderBSP %d] visNodes=%d\n", s_bspLogCount, this->numVisibleNodes);
+		s_bspLogCount++;
+	}
+#endif
 	for (int i = this->numVisibleNodes - 1; i >= 0; --i) {
 		this->drawNodeGeometry(this->nodeIdxs[i]);
 		this->viewSprites = -1;

@@ -111,17 +111,9 @@ void gles::SetGLState() {
 	glEnableClientState(GL_TEXTURE_COORD_ARRAY);
 	glDisableClientState(GL_COLOR_ARRAY);
 #ifdef N64
-	Applet* app = CAppContainer::getInstance()->app;
-	if (app && app->canvas && app->canvas->loadMapID == 3 && this->fogEnd > this->fogStart + 50.0f) {
-		glFogf(GL_FOG_MODE, GL_LINEAR);
-		glFogfv(GL_FOG_COLOR, this->fogColor);
-		glFogf(GL_FOG_START, this->fogStart);
-		glFogf(GL_FOG_END, this->fogEnd);
-		glEnable(GL_FOG);
-	} else {
-		glDisable(GL_FOG);
-	}
+	glDisable(GL_FOG);
 #else
+	Applet* app = CAppContainer::getInstance()->app;
 	glFogf(GL_FOG_MODE, GL_LINEAR);
 	glFogfv(GL_FOG_COLOR, this->fogColor);
 	glFogf(GL_FOG_START, this->fogStart);
@@ -237,6 +229,15 @@ void gles::BeginFrame(int x, int y, int w, int h, int* mtxView, int* mtxProjecti
 	this->fogBlack[1] = 0.0;
 	this->fogBlack[2] = 0.0;
 	this->fogBlack[3] = 0.0;
+#ifdef N64
+	static int s_bfDbg = 0;
+	if (s_bfDbg < 3) {
+		debugf("[BeginFrame] vp=[%d,%d,%d,%d] mtxView12=(%.2f,%.2f,%.2f)\n",
+		       this->vPortRect[0], this->vPortRect[1], this->vPortRect[2], this->vPortRect[3],
+		       this->modelViewMatrix[12], this->modelViewMatrix[13], this->modelViewMatrix[14]);
+		s_bfDbg++;
+	}
+#endif
 	this->SetGLState();
 }
 
@@ -422,12 +423,27 @@ bool gles::RasterizeConvexPolygon(int numVerts, TGLVert* verts) {
 			}
 		}
 
+#ifdef N64
+			static int s_rcpDbg = 0;
+			if (s_rcpDbg < 5) {
+				debugf("[RasterizePoly] n=%d v0=(%.2f,%.2f,%.2f)\n",
+				       numVerts, this->immediate[0].xyzw[0], this->immediate[0].xyzw[1], this->immediate[0].xyzw[2]);
+				s_rcpDbg++;
+			}
+#endif
+
 		glDrawElements(GL_TRIANGLES, (numVerts * 3) - (2 * 3), GL_UNSIGNED_SHORT, this->quad_indexes);
 		glMatrixMode(GL_MODELVIEW);
 		glLoadMatrixf(this->modelViewMatrix);
 		glMatrixMode(GL_PROJECTION);
 		glLoadMatrixf(this->projectionMatrix);
 		this->fogMode = fogMode;
+#ifdef N64
+		glDisable(GL_FOG);
+#else
+#ifdef N64
+		glDisable(GL_FOG);
+#else
 		if (this->fogMode) {
 			glEnable(GL_FOG);
 			glFogfv(GL_FOG_COLOR, (this->fogMode == 1) ? this->fogBlack : this->fogColor);
@@ -435,6 +451,8 @@ bool gles::RasterizeConvexPolygon(int numVerts, TGLVert* verts) {
 		else {
 			glDisable(GL_FOG);
 		}
+#endif
+#endif
 		return true;
 	}
 	return false;
@@ -503,6 +521,15 @@ bool gles::RasterizeConvexPolygon(int numVerts, GLVert* verts) {
 				verts++;
 			}
 		}
+
+#ifdef N64
+			static int s_rcpDbg = 0;
+			if (s_rcpDbg < 5) {
+				debugf("[RasterizePoly] n=%d v0=(%.2f,%.2f,%.2f)\n",
+				       numVerts, this->immediate[0].xyzw[0], this->immediate[0].xyzw[1], this->immediate[0].xyzw[2]);
+				s_rcpDbg++;
+			}
+#endif
 
 		glDrawElements(GL_TRIANGLES, (numVerts * 3) - (2 * 3), GL_UNSIGNED_SHORT, this->quad_indexes);
 		glMatrixMode(GL_MODELVIEW);
@@ -626,7 +653,26 @@ bool gles::DrawModelVerts(TGLVert* verts, int numVerts) {
 				verts++;
 			}
 
-			glDrawElements(GL_TRIANGLES, (numVerts * 3) - (2 * 3), GL_UNSIGNED_SHORT, this->quad_indexes);
+#ifdef N64
+			static int s_dmDbg = 0;
+			if (s_dmDbg < 5) {
+				debugf("[DrawModelVerts] n=%d v0=(%.2f,%.2f,%.2f) st0=(%.2f,%.2f)\n",
+				       numVerts, this->immediate[0].xyzw[0], this->immediate[0].xyzw[1], this->immediate[0].xyzw[2],
+				       this->immediate[0].st[0], this->immediate[0].st[1]);
+				s_dmDbg++;
+			}
+#endif
+
+	#ifdef N64
+			static int s_rcpDbg = 0;
+			if (s_rcpDbg < 5) {
+				debugf("[RasterizePoly] n=%d v0=(%.2f,%.2f,%.2f)\n",
+				       numVerts, this->immediate[0].xyzw[0], this->immediate[0].xyzw[1], this->immediate[0].xyzw[2]);
+				s_rcpDbg++;
+			}
+#endif
+
+		glDrawElements(GL_TRIANGLES, (numVerts * 3) - (2 * 3), GL_UNSIGNED_SHORT, this->quad_indexes);
 
 			return (this->isInit == true);
 		}
@@ -653,6 +699,13 @@ void gles::SetupTexture(int n, int n2, int renderMode, int flags) {
 	if (!chain->texnum) {
 		this->CreateTextureForMediaID(n, mediaID, true);
 	}
+#ifdef N64
+	static int s_setupTexDbg = 0;
+	if (s_setupTexDbg < 5) {
+		debugf("[SetupTexture] tile=%d n2=%d mediaID=%d texnum=%u\n", n, n2, mediaID, chain->texnum);
+		s_setupTexDbg++;
+	}
+#endif
 
 	next = this->chains[(int)mediaID].next;
 	next->prev = chain->prev;
@@ -768,6 +821,9 @@ void gles::SetupTexture(int n, int n2, int renderMode, int flags) {
 			}
 		}
 
+#ifdef N64
+		glDisable(GL_FOG);
+#else
 		if (this->fogMode) {
 			glEnable(GL_FOG);
 			glFogfv(GL_FOG_COLOR, (this->fogMode == 1) ? this->fogBlack : this->fogColor);
@@ -775,6 +831,7 @@ void gles::SetupTexture(int n, int n2, int renderMode, int flags) {
 		else {
 			glDisable(GL_FOG);
 		}
+#endif
 
 		int v28, v31, v32, v33;
 		v28 = 0;
@@ -957,7 +1014,7 @@ void gles::CreateTextureForMediaID(int n, int mediaID, bool b) {
 	} while (v15 < 256);
 	__len = height * width;
 #ifdef N64
-	static char s_texelDecodeBuf[256 * 256 + 512];
+	alignas(8) static char s_texelDecodeBuf[256 * 256 + 512];
 	data = s_texelDecodeBuf;
 #else
 	data = (char*)malloc(height * width + 512);
@@ -1189,7 +1246,7 @@ void gles::CreateTextureForMediaID(int n, int mediaID, bool b) {
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 
 #ifdef N64
-	static uint16_t s_texData3D[2048];
+	alignas(8) static uint16_t s_texData3D[2048];
 	uint16_t* texPal = (uint16_t*)data;
 	uint8_t* texData8 = (uint8_t*)data + 512;
 	for (int i = 0; i < texH; i++) {
@@ -1200,6 +1257,12 @@ void gles::CreateTextureForMediaID(int n, int mediaID, bool b) {
 		}
 	}
 	glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texW, texH, 0, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, s_texData3D);
+	static int s_createTexDbg = 0;
+	if (s_createTexDbg < 5) {
+		debugf("[CreateTex] mediaID=%d size=%dx%d down=%dx%d texnum=%u pal0=%04x pal1=%04x tex0=%04x\n",
+		       mediaID, width, height, texW, texH, ct->texnum, texPal[0], texPal[1], s_texData3D[0]);
+		s_createTexDbg++;
+	}
 #else
 	uint16_t* texData = (uint16_t*)std::malloc(width * height * 2);
 	uint16_t* texPal = (uint16_t*)data;
@@ -1246,6 +1309,9 @@ bool gles::DrawSkyMap() {
 		this->RasterizeConvexPolygon(4, v5);
 		this->render->isSkyMap = false;
 		this->fogMode = fogMode;
+#ifdef N64
+		glDisable(GL_FOG);
+#else
 		if (this->fogMode) {
 			glEnable(GL_FOG);
 			glFogfv(GL_FOG_COLOR, (this->fogMode == 1) ? this->fogBlack : this->fogColor);
@@ -1253,6 +1319,7 @@ bool gles::DrawSkyMap() {
 		else {
 			glDisable(GL_FOG);
 		}
+#endif
 		return this->isInit == 1;
 	}
 	return false;
