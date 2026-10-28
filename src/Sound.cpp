@@ -59,7 +59,7 @@ bool Sound::startup() {
 
 void Sound::openAL_Init() {
 #ifdef N64
-	audio_init(44100, 4);
+	audio_init(22050, 8);
 	mixer_init(20);
 	for (int i = 0; i < 10; i++) {
 		this->channel[i].bufferId = i;
@@ -669,6 +669,9 @@ void Sound::volumeDown(int volume) {
 }
 
 void Sound::startFrame() {
+#ifdef N64
+	mixer_try_play();
+#endif
 	if (this->field_0x162 != 0) {
 		if (this->field_0x4 == false) {
 			this->playSound(this->resID, this->flags, this->priority, this->field_0x4);
@@ -683,7 +686,9 @@ void Sound::startFrame() {
 }
 
 void Sound::endFrame() {
-	// no implementado
+#ifdef N64
+	mixer_try_play();
+#endif
 }
 
 void Sound::SoundStream::StartFade(int volume, int fadeBeg, int fadeEnd) {

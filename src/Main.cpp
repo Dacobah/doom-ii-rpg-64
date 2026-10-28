@@ -167,7 +167,13 @@ void drawView(SDLGL *sdlGL) {
     }
 
 #ifdef N64
+#ifdef N64
+    mixer_try_play();
+#endif
     surface_t *disp = display_get();
+#ifdef N64
+    mixer_try_play();
+#endif
     rdpq_attach_clear(disp, NULL);
     gl_context_begin();
 

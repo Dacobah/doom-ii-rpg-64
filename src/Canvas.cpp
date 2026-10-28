@@ -28,6 +28,9 @@
 #include "Resource.h"
 #include "Enums.h"
 #include "Utils.h"
+#ifdef N64
+#include <mixer.h>
+#endif
 #include "Menus.h"
 #include "Input.h"
 
@@ -1018,7 +1021,13 @@ void Canvas::run() {
 
 	this->flushTime = app->upTimeMs;
 	this->graphics.resetScreenSpace();
+#ifdef N64
+	mixer_try_play();
+#endif
 	this->backPaint(&this->graphics);
+#ifdef N64
+	mixer_try_play();
+#endif
 	if (this->keyPressedTime != 0) {
 		this->lastKeyPressedTime = app->upTimeMs - this->keyPressedTime;
 		this->keyPressedTime = 0;
@@ -4647,6 +4656,9 @@ void Canvas::changeStoryPage(int i) {
 
 void Canvas::drawStory(Graphics* graphics)
 {
+#ifdef N64
+	mixer_try_play();
+#endif
 	Applet* app = CAppContainer::getInstance()->app;
 
 	Text* this_00;
@@ -4727,6 +4739,9 @@ int Canvas::getCharacterConstantByOrder(int i) {
 }
 
 void Canvas::drawCharacterSelection(Graphics* graphics) {
+#ifdef N64
+	mixer_try_play();
+#endif
 	Applet* app = CAppContainer::getInstance()->app;
 	fmButton* button;
 	Text* textBuff;
@@ -6199,6 +6214,9 @@ void Canvas::drawTargetPracticeScore(Graphics* graphics) {
 }
 
 void Canvas::drawTravelMap(Graphics* graphics) {
+#ifdef N64
+	mixer_try_play();
+#endif
 	Applet* app = CAppContainer::getInstance()->app;
 
 	if (this->stateVars[5] == 1) {

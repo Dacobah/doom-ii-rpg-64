@@ -2965,7 +2965,13 @@ void Render::render(int viewX, int viewY, int viewZ, int viewAngle, int viewPitc
 
 	this->portalInView = false;
 	this->closestPortalDist = 0x7FFFFFFF;
+#ifdef N64
+	mixer_try_play();
+#endif
 	this->renderBSP();
+#ifdef N64
+	mixer_try_play();
+#endif
 	if (!this->portalInView) {
 		this->portalState = Render::PORTAL_DNE;
 		this->previousPortalState = Render::PORTAL_DNE;
