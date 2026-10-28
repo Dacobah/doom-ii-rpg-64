@@ -906,9 +906,16 @@ bool Render::beginLoadMap(int mapNameID) {
 	int skyTexel = app->resource->getNumTableBytes(skyIndex + 17);
 
 	this->skyMapPalette = new uint16_t*[16];
+#ifdef N64
+	this->skyMapPalette[0] = new uint16_t[skyPal];
+	for (int i = 1; i < 16; i++) {
+		this->skyMapPalette[i] = nullptr;
+	}
+#else
 	for (int i = 0; i < 16; i++) {
 		this->skyMapPalette[i] = new uint16_t[skyPal];
 	}
+#endif
 	this->skyMapTexels = new uint8_t[skyTexel];
 
 	app->resource->beginTableLoading();
@@ -917,6 +924,7 @@ bool Render::beginLoadMap(int mapNameID) {
 	app->resource->finishTableLoading();
 	app->canvas->updateLoadingBar(false);
 
+#ifndef N64
 	for (int n19 = 0; n19 < 1024; n19++) {
 		if (this->mediaPalettes[n19][0] != nullptr) {
 			int length = this->mediaPalettesSizes[n19];
@@ -926,6 +934,7 @@ bool Render::beginLoadMap(int mapNameID) {
 			}
 		}
 	}
+#endif
 
 	app->canvas->changeMapStarted = false;
 	this->destDizzy = 0;
@@ -2430,6 +2439,7 @@ void Render::startFogLerp(int n, int n2, int fogLerpTime) {
 }
 
 void Render::buildFogTable() {
+#ifndef N64
 	int fogTableFrac = this->fogTableFrac;
 	int fogTableColor = this->fogTableColor;
 	uint16_t* fogTableBase = this->fogTableBase;
@@ -2438,9 +2448,11 @@ void Render::buildFogTable() {
 		uint16_t dat = fogTableBase[i];
 		fogTableDest[i] = (((fogTableFrac >> 2) * ((dat & 0x07e0) >> 6)) & 0x07e0 | (((fogTableFrac >> 3) * (dat & 0xF81F)) >> 5) & 0xF81F) + fogTableColor;
 	}
+#endif
 }
 
 void Render::buildFogTable(int n, int n2, int n3) {
+#ifndef N64
 	int n4 = (n3 & 0xFF000000) >> 24 & 0xFF;
 	int n5 = this->mediaMappings[n] + n2;
 	if ((this->mediaPalColors[n5] & 0x4000) != 0x0) {
@@ -2456,6 +2468,7 @@ void Render::buildFogTable(int n, int n2, int n3) {
 			this->buildFogTable();
 		}
 	}
+#endif
 }
 
 void Render::buildFogTables(int fogColor) {
@@ -2469,6 +2482,7 @@ void Render::buildFogTables(int fogColor) {
 		return;
 	}
 
+#ifndef N64
 	int n = (fogColor & 0xFF000000) >> 24 & 0xFF;
 	for (int i = 1; i < 16; ++i) {
 		int n2 = (i << 8) / 16 * n >> 8;
@@ -2489,9 +2503,13 @@ void Render::buildFogTables(int fogColor) {
 	}
 	this->buildFogTable(234, 0, ((n * 180 >> 8 & 0xFF) << 24 | (app->tinyGL->fogColor & 0xFFFFFF)));
 	this->buildFogTable(234, 0, 0xFF000000); // IOS
+#endif
 }
 
 void Render::setupPalette(uint16_t* spanPalette, int renderMode, int renderFlags) {
+	if (!spanPalette) {
+		return;
+	}
 	// Pendiente
 	Applet* app = CAppContainer::getInstance()->app;
 
@@ -2646,7 +2664,11 @@ int (*Render::getImageFrameBounds(int n, int n2, int n3, int n4))[4]{
 }
 
 uint16_t* Render::getPalette(int n, int n2, int n3) {
+#ifdef N64
+	return this->mediaPalettes[this->mediaPalColors[this->mediaMappings[n] + n2] & 0x3FFF][0];
+#else
 	return this->mediaPalettes[this->mediaPalColors[this->mediaMappings[n] + n2] & 0x3FFF][n3];
+#endif
 }
 
 void Render::setupTexture(int n, int n2, int renderMode, int renderFlags) {
@@ -2943,7 +2965,6 @@ void Render::render(int viewX, int viewY, int viewZ, int viewAngle, int viewPitc
 
 	this->portalInView = false;
 	this->closestPortalDist = 0x7FFFFFFF;
-	this->_gles->DrawSkyMap();
 	this->renderBSP();
 	if (!this->portalInView) {
 		this->portalState = Render::PORTAL_DNE;

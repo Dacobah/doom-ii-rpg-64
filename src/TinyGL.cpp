@@ -45,10 +45,15 @@ bool TinyGL::startup(int screenWidth, int screenHeight) {
 }
 
 uint16_t* TinyGL::getFogPalette(int i) {
+#ifdef N64
+	if (!this->paletteBase) return nullptr;
+	return this->paletteBase[0];
+#else
 	i = (((0x7FFFFF / (i >> 16)) - this->fogMin) << 4) / this->fogRange;
 	i = (i & ~i >> 31) - 15;
 	i = (i & i >> 31) + 15;
 	return this->paletteBase[i];
+#endif
 }
 
 void TinyGL::clearColorBuffer(int color) {

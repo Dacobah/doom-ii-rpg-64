@@ -736,20 +736,30 @@ void Input::handleEvents() noexcept {
     static int lastAction = 0;
     int curAction = 0;
 
-    // Analog stick direction conversion (Deadzone = 35)
+    // Analog stick direction conversion (Deadzone = 35) with edge detection
     bool stickUp    = (inputs.stick_y > 35);
     bool stickDown  = (inputs.stick_y < -35);
     bool stickLeft  = (inputs.stick_x < -35);
     bool stickRight = (inputs.stick_x > 35);
 
+    static bool prevStickUp = false, prevStickDown = false, prevStickLeft = false, prevStickRight = false;
+    bool stickUpPressed    = (stickUp && !prevStickUp);
+    bool stickDownPressed  = (stickDown && !prevStickDown);
+    bool stickLeftPressed  = (stickLeft && !prevStickLeft);
+    bool stickRightPressed = (stickRight && !prevStickRight);
+    prevStickUp    = stickUp;
+    prevStickDown  = stickDown;
+    prevStickLeft  = stickLeft;
+    prevStickRight = stickRight;
+
     // Directional actions (Up / Down / Left / Right)
-    if (pressed.d_up || stickUp) {
+    if (pressed.d_up || stickUpPressed) {
         curAction = AVK_UP | AVK_MENU_UP;
-    } else if (pressed.d_down || stickDown) {
+    } else if (pressed.d_down || stickDownPressed) {
         curAction = AVK_DOWN | AVK_MENU_DOWN;
-    } else if (pressed.d_left || stickLeft) {
+    } else if (pressed.d_left || stickLeftPressed) {
         curAction = AVK_LEFT | AVK_MENU_PAGE_UP;
-    } else if (pressed.d_right || stickRight) {
+    } else if (pressed.d_right || stickRightPressed) {
         curAction = AVK_RIGHT | AVK_MENU_PAGE_DOWN;
     }
     // Strafe actions (L & R triggers)
@@ -789,7 +799,7 @@ void Input::handleEvents() noexcept {
         curAction = AVK_PDA;
     }
 
-    // Auto-repeat for directions if held
+    // Auto-repeat for directions if held (tuned for animFrames=3)
     bool isDirHeld = (held.d_up || held.d_down || held.d_left || held.d_right ||
                       stickUp || stickDown || stickLeft || stickRight);
 
@@ -800,10 +810,10 @@ void Input::handleEvents() noexcept {
         repeatTimer = 0;
     } else if (isDirHeld && lastAction != 0) {
         repeatTimer++;
-        if (repeatTimer >= 10) { // Initial delay
+        if (repeatTimer >= 4) { // Initial delay matched to animFrames=3
             canvas->keyDownCausedMove = true;
             canvas->addEvents(lastAction);
-            repeatTimer = 6; // Repeat interval
+            repeatTimer = 1; // Repeat interval
         }
     } else {
         lastAction = 0;

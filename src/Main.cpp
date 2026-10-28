@@ -204,6 +204,21 @@ void drawView(SDLGL *sdlGL) {
                CAppContainer::getInstance()->app->canvas->state,
                hs.used / 1024, (hs.total - hs.used) / 1024);
     }
+
+    static int s_perfFrames = 0;
+    static uint32_t s_perfLastTime = 0;
+    s_perfFrames++;
+    uint32_t nowTime = CAppContainer::getInstance()->getTimeMS();
+    if (nowTime - s_perfLastTime >= 1000) {
+        int fps = (s_perfFrames * 1000) / (nowTime - s_perfLastTime);
+        struct mallinfo minf = mallinfo();
+        debugf("[PERF] FPS=%d state=%d heap_free=%d KB\n",
+               fps, CAppContainer::getInstance()->app->canvas->state,
+               minf.fordblks / 1024);
+        s_perfFrames = 0;
+        s_perfLastTime = nowTime;
+    }
+
     mixer_try_play();
 #endif
 

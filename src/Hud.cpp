@@ -1006,6 +1006,7 @@ void Hud::drawBubbleText(Graphics* graphics) {
 }
 
 void Hud::drawArrowControls(Graphics* graphics) {
+#ifndef N64
 	Applet* app = CAppContainer::getInstance()->app;
 	Image* imgDpad;
 
@@ -1043,6 +1044,7 @@ void Hud::drawArrowControls(Graphics* graphics) {
 		app->canvas->m_controlButtons[app->canvas->m_controlMode + 0]->Render(graphics);
 		app->canvas->m_controlButtons[app->canvas->m_controlMode + 4]->Render(graphics);
 	}
+#endif
 }
 
 void Hud::drawWeapon(Graphics* graphics, int x, int y, int weapon, bool highlighted) {

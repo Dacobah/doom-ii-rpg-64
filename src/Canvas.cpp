@@ -159,7 +159,11 @@ bool Canvas::startup() {
 			this->softKeyY = this->screenRect[1] + this->screenRect[3];
 		}
 
+#ifdef N64
+		this->setAnimFrames(3);
+#else
 		this->setAnimFrames(10);
+#endif
 
 		this->startupMap = 1;
 		this->skipIntro = false;
