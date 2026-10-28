@@ -121,6 +121,7 @@ void gles::SetGLState() {
 #endif
 	this->fogMode = 0;
 	glEnable(GL_BLEND);
+	glDisable(GL_CULL_FACE);
 	glCullFace(GL_BACK);
 	this->renderMode = -1;
 	this->flags = -1;
@@ -392,9 +393,10 @@ bool gles::RasterizeConvexPolygon(int numVerts, TGLVert* verts) {
 				//------------------------------------------------------------------------------------
 				immediate->xyzw[0] /= immediate->xyzw[3];
 				immediate->xyzw[1] /= immediate->xyzw[3];
-				immediate->xyzw[2] = 1.0f;
+				immediate->xyzw[2] = 0.0f;
 				immediate->xyzw[3] = 1.0f;
 				immediate->st[0] += -YAW_TO_FLOAT(this->tinyGL->viewYaw);
+				while (immediate->st[0] < 0.0f) immediate->st[0] += 4.0f;
 
 				immediate++;
 				verts++;
@@ -493,9 +495,10 @@ bool gles::RasterizeConvexPolygon(int numVerts, GLVert* verts) {
 				//------------------------------------------------------------------------------------
 				immediate->xyzw[0] /= immediate->xyzw[3];
 				immediate->xyzw[1] /= immediate->xyzw[3];
-				immediate->xyzw[2] = 1.0f;
+				immediate->xyzw[2] = 0.0f;
 				immediate->xyzw[3] = 1.0f;
 				immediate->st[0] += -YAW_TO_FLOAT(this->tinyGL->viewYaw);
+				while (immediate->st[0] < 0.0f) immediate->st[0] += 4.0f;
 
 				immediate++;
 				verts++;
@@ -1292,15 +1295,19 @@ bool gles::DrawSkyMap() {
 		this->SetupTexture(Enums::TILENUM_SKY_BOX, 0, 0, 0);
 		v5[0].x = -100;
 		v5[0].y = -100;
+		v5[0].z = 0;
 		v5[0].w = 100;
 		v5[1].x = 100;
 		v5[1].y = -100;
+		v5[1].z = 0;
 		v5[1].w = 100;
 		v5[2].x = 100;
 		v5[2].y = 100;
+		v5[2].z = 0;
 		v5[2].w = 100;
 		v5[3].x = -100;
 		v5[3].y = 100;
+		v5[3].z = 0;
 		v5[3].w = 100;
 		fogMode = this->fogMode;
 		this->fogMode = 0;

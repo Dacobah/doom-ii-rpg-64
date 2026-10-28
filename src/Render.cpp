@@ -2918,7 +2918,7 @@ void Render::render(int viewX, int viewY, int viewZ, int viewAngle, int viewPitc
 		app->tinyGL->columnScale[i] = TinyGL::COLUMN_SCALE_INIT;
 	}
 
-	//app->game->scriptStateVars[5] = 1; // IOS
+	app->game->scriptStateVars[5] = 1; // Always enable sky drawing (like iOS)
 
 	this->clearColorBuffer = app->upTimeMs;
 	if (app->canvas->state != Canvas::ST_AUTOMAP) {
